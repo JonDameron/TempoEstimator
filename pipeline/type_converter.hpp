@@ -55,7 +55,7 @@ private:
 
       const FromType* in_buf_this_unit = in_buf + val_offset;
 
-      FromType* out_buf_this_unit = out_buf + val_offset;
+      ToType* out_buf_this_unit = out_buf + val_offset;
 
       auto thread_work_func =
           [n_vals_this_unit, in_buf_this_unit, out_buf_this_unit]()->std::string
