@@ -12,6 +12,8 @@
 #include <boost/thread/thread.hpp>
 #include "utility/util.hpp"
 
+/** Encapsulates a group of threads to execute arbitrary work units.
+ */
 class ThreadSquad
 {
 public:
