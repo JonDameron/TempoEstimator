@@ -31,4 +31,3 @@ Source Code Notes
 -----------------
 
 For sake of simplicity, most functions that can fail return their error status in the form of a string; an empty string is indicative of success.
-
