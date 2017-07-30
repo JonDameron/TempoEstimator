@@ -15,10 +15,6 @@ public:
 
   virtual ~AbstractPipelineNode ();
 
-  int multithreading_n_threads () const {
-    return head_->threads_.size();
-  }
-
   std::string ConnectOutput (std::shared_ptr<AbstractPipelineNode> output_node);
 
 protected:
@@ -26,6 +22,10 @@ protected:
   /** Returns an empty string on success or a string describing the error.
    */
   typedef std::function<std::string()> ThreadWorkFunc;
+
+  std::shared_ptr<AbstractPipelineNode> output_node () {
+    return output_node_;
+  }
 
   void SubmitThreadWork (ThreadWorkFunc func);
 

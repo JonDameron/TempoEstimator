@@ -47,7 +47,7 @@ private:
 };
 
 /** For concatenating a sequence of messages relating to a single error;
- * specifcally intended to be used when unwinding a call stack on error.
+ * specifically intended to be used when unwinding a call stack on error.
  * @param err_strm Stream to receive the concatenated error messages.
  * @param str Error message to be added.
  */

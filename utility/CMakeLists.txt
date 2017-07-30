@@ -19,6 +19,7 @@ endif(NOT DEFINED MAX_ERRORS)
 set (SOURCES
   pcm_mono_audio_data.cpp
   proc_data.cpp
+  thread_squad.cpp
   util.cpp
   )
 

@@ -53,6 +53,10 @@ void ThreadSquad :: MainThreadFunc (int thread_id)
     }
 
     string result = work_unit(thread_id);
+
+    // Ensure that we don't accidentally execute the same work unit twice
+    work_unit = ThreadWorkUnit();
+
     if (!result.empty()) {
       // TODO: More sophisticated error handling
       cerr << "Thread " << thread_id << ": Error while executing work unit: "

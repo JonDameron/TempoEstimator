@@ -152,7 +152,7 @@ int main (int argc, char** argv)
 
   // Handle the command line arguments.
   char ch = 0;
-  while ( EOF != (ch = getopt(argc, argv, "f:h")) ) {
+  while ( EOF != (ch = getopt(argc, argv, "f:i:h")) ) {
     switch (ch) {
     case 'f': level_1_n_ffts_per_sec = strtol(optarg, NULL, 10); break;
     case 'h': Usage(progname); return EXIT_SUCCESS;

@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <fftw3.h>
 #include "pipeline/abstract_pipeline_node.hpp"
 #include "pipeline/fft_processor_config.hpp"
@@ -16,7 +15,7 @@ public:
 
   explicit FftProcessor (const FftProcessorConfig& cfg);
 
-  virtual ~FftProcessor ();
+  ~FftProcessor ();
 
 private:
 
@@ -25,7 +24,7 @@ private:
    computational complexity; for demonstration purposes, though, a reasonable
    constant value is fine.
    */
-  static const int kDefaultFftProcessorNWorkUnits = 4;
+  static const int kDefaultNWorkUnits = 4;
 
   std::string InitPlans (int n_work_units);
 

@@ -23,10 +23,16 @@ public:
    */
   typedef std::function<std::string (int thread_id)> ThreadWorkUnit;
 
+  /** Construct a new ThreadSquad of given max number of concurrent threads.
+   */
   explicit ThreadSquad (int n_threads);
 
+  /** Destructor; clears the work queue and stops all running threads.
+   */
   ~ThreadSquad ();
 
+  /** Push a new work unit to the back of the queue (lowest priority).
+   */
   void PushThreadWork (ThreadWorkUnit work_unit);
 
 private:

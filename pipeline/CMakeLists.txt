@@ -21,6 +21,7 @@ set (SOURCES
   abstract_pipeline_node.cpp
   audio_file_reader.cpp
   fft_processor.cpp
+  fft_processor_config.cpp
   tempo_estimator.cpp
   )
 

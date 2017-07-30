@@ -20,16 +20,16 @@ public:
   TypeConverter ()
   {}
 
-  virtual ~TypeConverter ()
+  ~TypeConverter ()
   {}
 
 private:
 
   /** 1,000,000 type conversions per thread work unit is a miniscule amount
    * (a single thread on a modern CPU should be able to complete that many in a
-   * small fraction of a second), but is fine for demonstration purposes.
+   * small fraction of a second), but this is fine for demonstration purposes.
    */
-  static const int kNConversionsPerWorkUnit = 1000*1000;
+  static const int kDefaultNWorkUnits = 1000*1000;
 
   std::string Process (std::shared_ptr<const ProcData> input,
                        std::shared_ptr<ProcData>* output) override
@@ -42,7 +42,7 @@ private:
 
     // [multithreading] The number of work units to be submitted for
     // parallel processing
-    const int n_work_units = n_vals_total / kNConversionsPerWorkUnit;
+    const int n_work_units = n_vals_total / kDefaultNWorkUnits;
 
     size_t val_offset = 0;
 

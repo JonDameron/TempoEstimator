@@ -13,7 +13,7 @@ using namespace pipeline;
 FftProcessor :: FftProcessor (const FftProcessorConfig& cfg)
 : cfg_(cfg)
 {
-  InitPlans(kDefaultFftProcessorNWorkUnits);
+  InitPlans(kDefaultNWorkUnits);
 }
 
 FftProcessor :: ~FftProcessor ()
@@ -108,11 +108,14 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
 
   const int n_work_units = fftw_plans_.size();
 
+  const size_t input_value_size  = cfg_.in_value_size();
+  const size_t output_value_size = cfg_.out_value_size();
+
   const int total_input_span_n_vals  = cfg_.total_input_span_n_values();
   const int total_output_span_n_vals = cfg_.total_output_span_n_values();
 
   const size_t total_input_span_bytes =
-      total_input_span_n_vals * cfg_.in_value_size();
+      total_input_span_n_vals * input_value_size;
 
   if (input->size_bytes() < total_input_span_bytes) {
     res << "Input buffer too short; minimum size = " << total_input_span_bytes
@@ -121,14 +124,11 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
   }
 
   const size_t total_output_span_bytes =
-      total_output_span_n_vals * cfg_.out_value_size();
+      total_output_span_n_vals * output_value_size;
 
   *output = ProcData::New(total_output_span_bytes);
   // ProcData::New() should always succeed
   assert(*output);
-
-  const size_t input_value_size  = cfg_.in_value_size();
-  const size_t output_value_size = cfg_.out_value_size();
 
   for (int unit_i = 0; unit_i < n_work_units; ++unit_i)
   {
@@ -170,20 +170,22 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
             fftw_execute_dft(plan, typed_input, typed_output);
           };
       break;
-    case FftProcessorConfig::FftType::kComplexToReal:
-      thread_work_func =
-          [plan, input_start, output_start]()->string {
-            fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
-            double*       typed_output = static_cast<double*>(output_start);
-            fftw_execute_dft_c2r(plan, typed_input, typed_output);
-          };
-      break;
     case FftProcessorConfig::FftType::kRealToComplex:
       thread_work_func =
           [plan, input_start, output_start]()->string {
             double*       typed_input  = static_cast<double*>(input_start);
             fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
             fftw_execute_dft_r2c(plan, typed_input, typed_output);
+          };
+      break;
+    // TODO: Support other FFT types
+    /*
+    case FftProcessorConfig::FftType::kComplexToReal:
+      thread_work_func =
+          [plan, input_start, output_start]()->string {
+            fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
+            double*       typed_output = static_cast<double*>(output_start);
+            fftw_execute_dft_c2r(plan, typed_input, typed_output);
           };
       break;
     case FftProcessorConfig::FftType::kRealToReal:
@@ -194,8 +196,9 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
             fftw_execute_r2r(plan, typed_input, typed_output);
           };
       break;
+      */
     default:
-      cerr << "Unhandled FFT type '" << cfg_.type() << "'\n";
+      cerr << "Unsupported FFT type '" << cfg_.type() << "'\n";
       abort();
     }
 
