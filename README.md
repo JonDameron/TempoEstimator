@@ -11,10 +11,10 @@ Required packages:
 libfftw3-dev  
 libboost-thread-dev
 
-cd <source directory>  
-mkdir build  
-cmake ..  
-make
+    cd (source directory)
+    mkdir build
+    cmake ..
+    make
 
 If the build succeeds, the output binary will appear in "bin".
 
