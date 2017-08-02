@@ -155,6 +155,10 @@ public:
            : sizeof(double);
   }
 
+  fftw_r2r_kind real_to_real_kind () const {
+    return real_to_real_kind_;
+  }
+
   /** If false (the default), the FftProcessor will reject a configuration that
    * would transform to or from real-valued input AND has an odd fft_len
    * AND would span more than one thread work unit.  This is because we want
@@ -185,6 +189,7 @@ private:
   int sign_;
   int fftw_planner_flags_;
   double fftw_planner_time_limit_sec_;
+  fftw_r2r_kind real_to_real_kind_;
   bool accept_odd_fft_len_for_real_transform_;
 
   std::vector<double> window_;

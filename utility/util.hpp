@@ -68,3 +68,15 @@ void AppendErrorWithErrno (std::stringstream* err_strm, const std::string& str);
  * @param out Output vector to receive window data.
  */
 void MakeHanningWindow (int n, std::vector<double>* out);
+
+/** Returns a unique ID for the invoking thread. Useful, e.g., for mappings
+ * that need one unique entry per thread.
+ * From gettid manual page:
+ * gettid() returns the caller's thread ID (TID).  In a single-threaded
+ * process, the thread ID is equal to the process ID (PID, as returned
+ * by getpid(2)).  In a multithreaded process, all threads have the same
+ * PID, but each one has a unique TID.
+ * Glibc does not provide a wrapper for this system call; call it using
+ * syscall(2).
+ */
+pid_t GetCurrentThreadId ();

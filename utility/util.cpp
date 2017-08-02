@@ -1,5 +1,7 @@
 #include <cmath>
 #include <string>
+#include <unistd.h>
+#include <sys/syscall.h>
 #include "utility/util.hpp"
 
 using namespace std;
@@ -50,4 +52,9 @@ void MakeHanningWindow (int n, std::vector<double>* out)
   {
     (*out)[i] = 0.5 * (1 - cos(i * cos_scale));
   }
+}
+
+pid_t GetCurrentThreadId ()
+{
+  return (pid_t) syscall(SYS_gettid);
 }

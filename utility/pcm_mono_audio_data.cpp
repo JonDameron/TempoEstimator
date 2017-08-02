@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -8,6 +9,11 @@
 #include "utility/util.hpp"
 
 using namespace std;
+
+const uint8_t PackedPcmAudioHeader::kFmt4cc  [4] = { 'f', 'm', 't', ' ' };
+const uint8_t PackedPcmAudioHeader::kList4cc [4] = { 'L', 'I', 'S', 'T' };
+const uint8_t PackedPcmAudioHeader::kRiff4cc [4] = { 'R', 'I', 'F', 'F' };
+const uint8_t PackedPcmAudioHeader::kWave4cc [4] = { 'W', 'A', 'V', 'E' };
 
 bool PackedPcmAudioHeader :: HasOptionalList () const
 {
@@ -106,8 +112,11 @@ PcmMonoAudioData :: PcmMonoAudioData (const string& wav_file_path,
 
     // Subtract an additional 8 bytes to account for size of LIST 4CC and
     // 32-bit LIST size that immediately follows
-    const size_t list_data_already_read_size = sizeof(PackedPcmAudioHeader)
-        - (header_.optional_list_chunk_position - &header_) - 8;
+    const size_t list_data_already_read_size =
+        sizeof(PackedPcmAudioHeader)
+        - (header_.optional_list_chunk_position
+             - reinterpret_cast<uint8_t*>(&header_))
+        - 8;
 
     // Calculate how much more of the audio file must be read to reach the
     // end of the LIST chunk
@@ -140,11 +149,11 @@ PcmMonoAudioData :: PcmMonoAudioData (const string& wav_file_path,
   // Read whatever audio samples are present, even if the actual amount of
   // data remaining in the file is less than the 'data' chunk size.
 
-  const size_t data_chunk_size_bytes =
-      std::min<size_t>(remaining_file_size, data_chunk_cap_.size);
-
   const size_t interleaved_sample_unit_size =
       header_.n_channels * n_bytes_per_sample;
+
+  size_t data_chunk_size_bytes =
+      std::min<size_t>(remaining_file_size, data_chunk_cap_.size);
 
   data_chunk_size_bytes -= data_chunk_size_bytes % interleaved_sample_unit_size;
 
@@ -184,7 +193,7 @@ PcmMonoAudioData :: PcmMonoAudioData (const string& wav_file_path,
 
     ConvertMultiChannelSamplesToMono(
         header_.n_channels, n_samples_per_chan, orig_samples.data(),
-        static_cast<int16_t*>(sample_data_.get()) );
+        static_cast<int16_t*>(sample_data_->data()) );
   }
 }
 

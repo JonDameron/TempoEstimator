@@ -40,6 +40,12 @@ string FftProcessor :: InitPlans (int n_work_units)
   const int  out_dist     = cfg_.out_dist();
   const int  sign         = cfg_.sign();
   const int  flags        = cfg_.fftw_planner_flags();
+  // applicable only for real-to-real (r2r) transforms
+  const fftw_r2r_kind real_to_real_kind = cfg_.real_to_real_kind();
+
+  const vector<int> fft_lengths_for_planner (1, fft_len);
+  const vector<fftw_r2r_kind>
+      real_to_real_kinds_for_planner (1, real_to_real_kind);
 
   if (FftProcessorConfig::kInvalidFftwPlannerTimeLimit !=
         cfg_.fftw_planner_time_limit_sec())
@@ -59,10 +65,10 @@ string FftProcessor :: InitPlans (int n_work_units)
 
   // These temporary buffers are solely for plan construction; when actually
   // executing the FFT, we'll provide different buffers.
-  fftw_complex* temp_in_array =
-      fftw_alloc_complex(cfg_.total_input_span_n_values());
-  fftw_complex* temp_out_array =
-      fftw_alloc_complex(cfg_.total_output_span_n_values());
+  void* temp_in_array =
+      fftw_malloc(cfg_.in_value_size() * cfg_.total_input_span_n_values());
+  void* temp_out_array =
+      fftw_malloc(cfg_.out_value_size() * cfg_.total_output_span_n_values());
 
   int fft_offset_this_unit = 0;
 
@@ -73,24 +79,79 @@ string FftProcessor :: InitPlans (int n_work_units)
     const int n_ffts_this_unit = n_ffts_total / n_work_units
         + (unit_i < n_ffts_total % n_work_units ? 1 : 0);
 
-    const vector<int> fft_lengths (1, fft_len);
-
-    fftw_plans_.push_back(
-        fftw_plan_many_dft(
-            rank,
-            fft_lengths.data(),
-            n_ffts_this_unit,
-            temp_in_array,
-            in_n_embed,
-            in_stride,
-            in_dist,
-            temp_out_array,
-            out_n_embed,
-            out_stride,
-            out_dist,
-            sign,
-            flags )
-      );
+    switch (cfg_.type())
+    {
+    case FftProcessorConfig::FftType::kComplexToComplex:
+      fftw_plans_.push_back(
+          fftw_plan_many_dft(
+              rank,
+              fft_lengths_for_planner.data(),
+              n_ffts_this_unit,
+              static_cast<fftw_complex*>(temp_in_array),
+              in_n_embed,
+              in_stride,
+              in_dist,
+              static_cast<fftw_complex*>(temp_out_array),
+              out_n_embed,
+              out_stride,
+              out_dist,
+              sign,
+              flags )
+          );
+      break;
+    case FftProcessorConfig::FftType::kRealToComplex:
+      fftw_plans_.push_back(
+          fftw_plan_many_dft_r2c(
+              rank,
+              fft_lengths_for_planner.data(),
+              n_ffts_this_unit,
+              static_cast<double*>(temp_in_array),
+              in_n_embed,
+              in_stride,
+              in_dist,
+              static_cast<fftw_complex*>(temp_out_array),
+              out_n_embed,
+              out_stride,
+              out_dist,
+              flags )
+          );
+      break;
+    case FftProcessorConfig::FftType::kComplexToReal:
+      fftw_plans_.push_back(
+          fftw_plan_many_dft_c2r(
+              rank,
+              fft_lengths_for_planner.data(),
+              n_ffts_this_unit,
+              static_cast<fftw_complex*>(temp_in_array),
+              in_n_embed,
+              in_stride,
+              in_dist,
+              static_cast<double*>(temp_out_array),
+              out_n_embed,
+              out_stride,
+              out_dist,
+              flags )
+          );
+      break;
+    case FftProcessorConfig::FftType::kRealToReal:
+      fftw_plans_.push_back(
+          fftw_plan_many_r2r(
+              rank,
+              fft_lengths_for_planner.data(),
+              n_ffts_this_unit,
+              static_cast<double*>(temp_in_array),
+              in_n_embed,
+              in_stride,
+              in_dist,
+              static_cast<double*>(temp_out_array),
+              out_n_embed,
+              out_stride,
+              out_dist,
+              real_to_real_kinds_for_planner.data(),
+              flags )
+          );
+      break;
+    }
 
     work_unit_fft_offsets_.push_back(fft_offset_this_unit);
     work_unit_n_ffts_.push_back(n_ffts_this_unit);
@@ -150,7 +211,7 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
     void* output_start = (*output)->byte_data()
         + output_value_size * fft_offset * cfg_.out_dist();
 
-    ThreadWorkFunc thread_work_func;
+    ThreadSquad::ThreadWorkUnit thread_work;
 
     // IMPORTANT: Because we're using the "new-array" FFTW execution functions
     // here, it is essential that we are careful about our selections for
@@ -163,48 +224,41 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
     switch (cfg_.type())
     {
     case FftProcessorConfig::FftType::kComplexToComplex:
-      thread_work_func =
-          [plan, input_start, output_start]()->string {
-            fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
-            fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
-            fftw_execute_dft(plan, typed_input, typed_output);
-          };
+      thread_work = [plan, input_start, output_start]()->string {
+          fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
+          fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
+          fftw_execute_dft(plan, typed_input, typed_output);
+        };
       break;
     case FftProcessorConfig::FftType::kRealToComplex:
-      thread_work_func =
-          [plan, input_start, output_start]()->string {
-            double*       typed_input  = static_cast<double*>(input_start);
-            fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
-            fftw_execute_dft_r2c(plan, typed_input, typed_output);
-          };
+      thread_work = [plan, input_start, output_start]()->string {
+          double*       typed_input  = static_cast<double*>(input_start);
+          fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
+          fftw_execute_dft_r2c(plan, typed_input, typed_output);
+        };
       break;
-    // TODO: Support other FFT types
-    /*
     case FftProcessorConfig::FftType::kComplexToReal:
-      thread_work_func =
-          [plan, input_start, output_start]()->string {
-            fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
-            double*       typed_output = static_cast<double*>(output_start);
-            fftw_execute_dft_c2r(plan, typed_input, typed_output);
-          };
+      thread_work = [plan, input_start, output_start]()->string {
+          fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
+          double*       typed_output = static_cast<double*>(output_start);
+          fftw_execute_dft_c2r(plan, typed_input, typed_output);
+        };
       break;
     case FftProcessorConfig::FftType::kRealToReal:
-      thread_work_func =
-          [plan, input_start, output_start]()->string {
-            double* typed_input  = static_cast<double*>(input_start);
-            double* typed_output = static_cast<double*>(output_start);
-            fftw_execute_r2r(plan, typed_input, typed_output);
-          };
+      thread_work = [plan, input_start, output_start]()->string {
+          double* typed_input  = static_cast<double*>(input_start);
+          double* typed_output = static_cast<double*>(output_start);
+          fftw_execute_r2r(plan, typed_input, typed_output);
+        };
       break;
-      */
     default:
       cerr << "Unsupported FFT type '" << cfg_.type() << "'\n";
       abort();
     }
 
-    // MakeThreadWorkFunc() should always succeed
-    assert(thread_work_func);
-    SubmitThreadWork(thread_work_func);
+    // Sanity check; the default case above should have guaranteed this condition
+    assert(thread_work);
+    SubmitThreadWork(thread_work);
   }
 
   return "";

@@ -16,7 +16,7 @@ public:
    */
   explicit AudioFileReader (
       std::shared_ptr<ThreadSquad> thread_squad,
-      std::shared_ptr<PcmMonoAudioData> existing_audio_data);
+      std::shared_ptr<PcmMonoAudioData> existing_audio_data );
 
   // TODO: Add a constructor that takes a path to a PCM audio file and
   // attempts to initialize audio_data_ from the content therein.
@@ -25,8 +25,7 @@ public:
 
 private:
 
-  std::string CollectHeadData (std::condition_variable& interrupt_condvar,
-                               std::shared_ptr<ProcData>* data_out) override;
+  std::string CollectHeadData (std::shared_ptr<ProcData>* data_out) override;
 
   std::shared_ptr<PcmMonoAudioData> audio_data_;
 };

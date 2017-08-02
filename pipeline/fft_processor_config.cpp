@@ -16,6 +16,7 @@ FftProcessorConfig :: FftProcessorConfig ()
   sign_(FFTW_FORWARD),
   fftw_planner_flags_(FFTW_MEASURE),
   fftw_planner_time_limit_sec_(kInvalidFftwPlannerTimeLimit),
+  real_to_real_kind_(FFTW_DHT), // discrete Hartley r2r transform by default
   accept_odd_fft_len_for_real_transform_(false)
 {
 }

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #include <boost/thread/thread.hpp>
@@ -35,9 +36,20 @@ public:
    */
   void PushThreadWork (ThreadWorkUnit work_unit);
 
+  void WaitForWorkUnits (pid_t thread_id_of_submitter);
+
 private:
 
-  void MainThreadFunc (int thread_id);
+  struct QueuedWorkUnit {
+    QueuedWorkUnit (pid_t submitter_pid_in, ThreadWorkUnit work_unit_in)
+    : submitter_pid(submitter_pid_in), work_unit(work_unit_in)
+    {}
+    pid_t submitter_pid;
+    ThreadWorkUnit work_unit;
+  };
+  std::deque<QueuedWorkUnit> work_queue_;
+
+  void ThreadFunc (int thread_id);
 
   bool is_running_;
 
@@ -47,5 +59,18 @@ private:
 
   std::condition_variable squad_state_changed_condvar_;
 
-  std::deque<ThreadWorkUnit> work_queue_;
+  /** Number of pending work units organized by the PID of the submitting thread.
+   * Note that we avoid over-utilizing the general squad state mutex/condvar by
+   * assigning a unique mutex/condvar to each work count.  Since the original
+   * motivation for creating this mapping is to enable a thread to wait for
+   * any given submitter's work units to fully evaluate, basic thread sync
+   * operations are necessary.
+   */
+  struct WorkCountInfo {
+    WorkCountInfo (int initial_count) : count(initial_count) {}
+    int count;
+    std::mutex mux;
+    std::condition_variable count_is_zero_condvar;
+  };
+  std::unordered_map<pid_t, WorkCountInfo> work_count_by_submitter_;
 };

@@ -16,12 +16,8 @@ AudioFileReader :: ~AudioFileReader ()
 {
 }
 
-string AudioFileReader :: CollectHeadData (condition_variable& interrupt_condvar,
-                                           shared_ptr<ProcData>* data_out)
+string AudioFileReader :: CollectHeadData (shared_ptr<ProcData>* data_out)
 {
-  // unused parameter
-  (void)interrupt_condvar;
-
   if (!audio_data_) {
     // This method has already been invoked, and this particular
     // AbstractPipelineHead implementation only returns non-empty data once

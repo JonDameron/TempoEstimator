@@ -11,10 +11,10 @@ struct PackedPcmAudioHeader
 {
   /** 4CC code for binary "RIFF" string at top of header
    */
-  static const uint8_t kFmt4cc  [4] = { 'f', 'm', 't', ' ' };
-  static const uint8_t kList4cc [4] = { 'L', 'I', 'S', 'T' };
-  static const uint8_t kRiff4cc [4] = { 'R', 'I', 'F', 'F' };
-  static const uint8_t kWave4cc [4] = { 'W', 'A', 'V', 'E' };
+  static const uint8_t kFmt4cc  [4];
+  static const uint8_t kList4cc [4];
+  static const uint8_t kRiff4cc [4];
+  static const uint8_t kWave4cc [4];
 
   bool HasOptionalList () const;
 
@@ -88,7 +88,7 @@ public:
 
   ~PcmMonoAudioData ();
 
-  const std::string& init_error () const {
+  std::string init_error () const {
     return init_error_.str();
   }
 
@@ -96,7 +96,7 @@ public:
     return header_;
   }
 
-  const size_t n_samples () const {
+  size_t n_samples () const {
     return n_samples_;
   }
 

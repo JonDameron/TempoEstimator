@@ -96,6 +96,7 @@ void MakeLevelOneFftProcessorConfig (
   vector<double> fft_window;
   MakeHanningWindow(level_1_fft_len, &fft_window);
 
+  cfg_out->set_type      (FftProcessorConfig::FftType::kRealToComplex);
   cfg_out->set_fft_len   (level_1_fft_len);
   cfg_out->set_n_ffts    (n_ffts);
   cfg_out->set_in_stride (1);
@@ -132,6 +133,7 @@ void MakeLevelTwoFftProcessorConfig (
   vector<double> fft_window;
   MakeHanningWindow(level_2_fft_len, &fft_window);
 
+  cfg_out->set_type      (FftProcessorConfig::FftType::kRealToComplex);
   cfg_out->set_fft_len   (level_2_fft_len);
   cfg_out->set_n_ffts    (level_2_n_ffts);
   cfg_out->set_in_stride (level_1_cfg.fft_len());
@@ -217,7 +219,9 @@ int main (int argc, char** argv)
 
   type_converter->ConnectOutput(level_1_fft_processor);
 
-  level_1_fft_processor->ConnectOutput(level_2_fft_processor);
+  level_1_fft_processor->ConnectOutput(complex_power_transformer);
+
+  complex_power_transformer->ConnectOutput(level_2_fft_processor);
 
   //level_2_fft_processor->ConnectOutput(tempo_estimator);
 
@@ -231,10 +235,10 @@ int main (int argc, char** argv)
   pipeline_head->Start();
   //tempo_estimator->WaitForEndOfInput();
 
-  PcmMonoAudioData
-
   cout << "Tempo estimate (beats per minute): "
        << tempo_estimator->average_tempo_bpm() << "\n";
+
+  PcmMonoAudioData out_audio;
 
   return EXIT_SUCCESS;
 }
