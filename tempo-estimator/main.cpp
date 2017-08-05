@@ -28,7 +28,8 @@ using pipeline::FftType;
  * input audio to identify repetitions of a musical pattern. There are several
  * ways that computational requirements could be reduced, among them sample
  * decimation (process only every Nth audio sample) and autocorrelation of only
- * a small portion of the input.
+ * a small portion of the input. This type of processing is also known as
+ * "comb filtering".
  *
  * A major advantage of the current method, which performs a series of
  * time-domain FFTs on the input followed by a series of corner-turn FFTs on

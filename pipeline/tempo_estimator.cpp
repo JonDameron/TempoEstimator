@@ -192,7 +192,8 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
   const int n_groups = level_1_fft_cfg_.n_ffts() / level_2_fft_cfg_.fft_len();
 
   vector<double> level_2_in_pwr_group_avg (
-      level_2_in_pwr.size() / n_level_2_ffts_per_group );
+      level_2_in_pwr.size() / n_level_2_ffts_per_group,
+      1.0 );
 
   // g: group index
   // b: level-2 bin index
@@ -203,13 +204,15 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
     for (int b = 0; b < level_2_out_n_bins; ++b)
     {
       const int b_start = g_start + b;
+      const int level_2_fft_start = (int)(n_level_2_ffts_per_group * 0.2);
+      const int level_2_fft_stop  = (int)(n_level_2_ffts_per_group * 0.8);
       double sum = 0;
-      for (int f = 0; f < n_level_2_ffts_per_group; ++f)
+      for (int f = level_2_fft_start; f < level_2_fft_stop; ++f)
       {
         sum += level_2_in_pwr.at(b_start + f*level_2_out_n_bins);
       }
       level_2_in_pwr_group_avg.at(g*level_2_out_n_bins + b) =
-          sum / n_level_2_ffts_per_group;
+          sum / (level_2_fft_stop - level_2_fft_start);
     }
   }
 
@@ -251,10 +254,14 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
         pow(*(dc_pwr_bin_iter + peak_bin    ), 0.25),
         pow(*(dc_pwr_bin_iter + peak_bin + 1), 0.25)
     };
-    double bins_mag_sum = std::accumulate<vector<double>::const_iterator, double>(
-        bins_mag.begin(), bins_mag.end(), 0 );
-    double index_adjust =
-        -1 * bins_mag.at(0) / bins_mag_sum + 1 * bins_mag.at(2) / bins_mag_sum;
+    const double bins_mag_sum =
+        std::accumulate<vector<double>::const_iterator, double>(
+            bins_mag.begin(), bins_mag.end(), 0 );
+    // For better clarity, this index_adjust calculation could also be written as
+    //  -1 * bins_mag.at(0) / bins_mag_sum
+    // + 0 * bins_mag.at(1) / bins_mag_sum
+    // + 1 * bins_mag.at(2) / bins_mag_sum
+    const double index_adjust = (bins_mag.at(2) - bins_mag.at(0)) / bins_mag_sum;
     level_2_weighted_fft_peaks.at(f).first  = peak_bin + index_adjust;
     // pow(4) because we took the fourth root earlier
     level_2_weighted_fft_peaks.at(f).second = pow(bins_mag_sum/3, 4);
@@ -306,6 +313,10 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
     // to double; this ensures that the numeric type of the sum is 'double'
     const double peak_bins_mag_sum =
         std::accumulate(peak_bins_mag.begin(), peak_bins_mag.end(), double(0));
+    // For better clarity, this index_adjust calculation could also be written as
+    //  -1 * peak_bins_mag.at(0) / peak_bins_mag_sum
+    // + 0 * peak_bins_mag.at(1) / peak_bins_mag_sum
+    // + 1 * peak_bins_mag.at(2) / peak_bins_mag_sum
     const double peak_index_adjust =
         (peak_bins_mag.at(2) - peak_bins_mag.at(0)) / peak_bins_mag_sum;
 
