@@ -8,7 +8,6 @@
 
 using namespace std;
 using namespace pipeline;
-using AbstractPipelineNode::ReturnReason;
 
 AbstractPipelineHead :: AbstractPipelineHead (shared_ptr<ThreadSquad> thread_squad)
 : is_running_(false),
@@ -24,22 +23,21 @@ AbstractPipelineHead :: ~AbstractPipelineHead ()
 string AbstractPipelineHead :: Start ()
 {
   if (is_running_) {
-    // Really this should probably be a failed assertion since the caller ought
-    // to know better than to invoke Start() twice without an intermediate Stop()
+    // This should probably be a failed assertion since the caller ought to
+    // know better than to invoke Start() twice without an intermediate Stop()
     return "Pipeline has already been started";
   }
 
   AbstractPipelineNode* node = this;
   while (node) {
-    if (output_node()) {
-      output_node()->SetHead(this);
-    }
-    node = node->output_node();
+    node->SetHead(this);
+    node = node->output_node().get();
   }
 
   is_running_ = true;
   main_thread_.reset( new boost::thread(
       bind(&AbstractPipelineHead::MainPipelineThreadFunc, this) ) );
+
   return "";
 }
 
@@ -68,7 +66,7 @@ void AbstractPipelineHead :: Stop ()
   main_thread_.reset();
 
   // Note that it is AbstractPipelineHead::MainPipelineThreadFunc() that
-  // pushes data through the pipeline.  Thus, now that it's stopped, we can
+  // pushes data through the pipeline. Thus, now that it's stopped, we can
   // return with the guarantee that the pipeline is completely "stopped".
   // Because the main thread always waits for all work units submitted
   // by each call to AbstractPipelineNode::Process() to be fully evaluated
@@ -77,14 +75,24 @@ void AbstractPipelineHead :: Stop ()
 
   AbstractPipelineNode* node = this;
   while (node) {
-    if (output_node()) {
-      output_node()->InvalidateHead();
-    }
-    node = node->output_node();
+    node->InvalidateHead();
+    node = node->output_node().get();
   }
 }
 
-ReturnReason AbstractPipelineHead :: InterruptibleSleep (double seconds)
+void AbstractPipelineHead :: WaitForProcessingCompletion ()
+{
+  // MainPipelineThreadFunc exits after the final node of the pipeline has
+  // finished processing.  Not checking is_running_ because its state is
+  // irrelevant; as long as the main pipeline thread is active, data may still
+  // be moving through the pipeline.
+  if (main_thread_->joinable()) {
+    main_thread_->join();
+  }
+}
+
+AbstractPipelineNode::ReturnReason AbstractPipelineHead :: InterruptibleSleep (
+    double seconds)
 {
   unique_lock<mutex> lock (state_mutex_);
 
@@ -104,7 +112,7 @@ ReturnReason AbstractPipelineHead :: InterruptibleSleep (double seconds)
   return is_running_ ? ReturnReason::kTimeExpired : ReturnReason::kShuttingDown;
 }
 
-string AbstractPipelineHead :: MainPipelineThreadFunc ()
+void AbstractPipelineHead :: MainPipelineThreadFunc ()
 {
   const pid_t this_thread_lwpid = GetCurrentThreadId();
 
@@ -114,6 +122,10 @@ string AbstractPipelineHead :: MainPipelineThreadFunc ()
    while this main thread is active is Stop(), which will then patiently wait
    on thread::join() before continuing.
    */
+
+  { unique_lock<mutex> lock (state_mutex_);
+    pipeline_error_str_.clear();
+  }
 
   while (is_running_)
   {
@@ -134,15 +146,35 @@ string AbstractPipelineHead :: MainPipelineThreadFunc ()
       thread_squad_->WaitForWorkUnits(this_thread_lwpid);
 
       if (!result.empty()) {
-        stringstream strm (result);
-        return StackError(&strm, "Pipeline head failed to collect new data");
+        node->set_process_error_str(result);
+        { unique_lock<mutex> lock (state_mutex_);
+          pipeline_error_str_ = result;
+        }
+        return;
       }
       if (!output) {
-        // Assume no error occurred, but we've reached the end of the input stream
+        // Assume no error occurred, but we've reached the end of the pipeline.
+        // Note that, unlike in Stop(), we *don't* need to worry about acquiring
+        // state_mutex_ before altering is_running_ here since it's guaranteed
+        // that the derived CollectHeadData() -- the only method that could be
+        // adversely affected by this action -- isn't invoked, as that method
+        // is only called by this thread.
+        is_running_ = false;
         break;
       }
 
-      // The next node in the pipeline will receive this node's output as input
+      if (OutputPreservationMode::kReference == node->output_preservation_mode()) {
+        node->set_most_recent_output(output);
+      } else if (OutputPreservationMode::kCopy == node->output_preservation_mode()) {
+        node->set_most_recent_output(ProcData::New(*output));
+      } else {
+        // Don't make any special effort to preserve the latest output, and
+        // blow away any previously preserved output
+        node->set_most_recent_output(shared_ptr<ProcData>());
+      }
+
+      // The next node in the pipeline will receive the current node's output
+      // as input
       input = output;
 
       // There should be no danger of the returned node becoming invalid (instance
@@ -152,8 +184,6 @@ string AbstractPipelineHead :: MainPipelineThreadFunc ()
       node = node->output_node().get();
     }
   }
-
-  return "";
 }
 
 void AbstractPipelineHead :: SubmitThreadWorkToHead (

@@ -15,6 +15,7 @@ struct PackedPcmAudioHeader
   static const uint8_t kList4cc [4];
   static const uint8_t kRiff4cc [4];
   static const uint8_t kWave4cc [4];
+  static const uint8_t kData4cc [4];
 
   bool HasOptionalList () const;
 
@@ -61,7 +62,7 @@ struct PackedPcmAudioHeader
      Since a LIST at this position can be any size (specified after the 'LIST'
      4CC), we can't make this cleaner via a union.
    */
-  uint8_t optional_list_chunk_position [0];
+  uint8_t optional_special_chunk_position [0];
 
   /** .wav specification: "Size of the extension"
    */
@@ -70,6 +71,8 @@ struct PackedPcmAudioHeader
   uint16_t n_valid_bits_per_sample;
 
   uint32_t channel_mask;
+
+  uint8_t optional_special_chunk_content_position [0];
 
   /** Globally unique identifier (GUID), including the data format code
    */
@@ -84,7 +87,11 @@ public:
 
   explicit PcmMonoAudioData (const std::string& wav_file_path);
 
-  PcmMonoAudioData (const std::string& wav_file_path, int n_samples_align);
+  explicit PcmMonoAudioData (const PackedPcmAudioHeader& header);
+
+  /** Copy constructor
+   */
+  PcmMonoAudioData (const PcmMonoAudioData& copy_src);
 
   ~PcmMonoAudioData ();
 
@@ -93,20 +100,29 @@ public:
   }
 
   const PackedPcmAudioHeader& header () const {
-    return header_;
+    return packed_header_;
   }
 
   size_t n_samples () const {
-    return n_samples_;
+    return sample_data_->size() / (packed_header_.n_bits_per_sample / 8);
   }
 
   const int16_t* samples () const {
-    return (const int16_t*)sample_data_.get();
+    return static_cast<const int16_t*>(sample_data_->data());
   }
 
   std::unique_ptr<SimdAlignedBuffer>&& MoveDataOut () {
     return std::move(sample_data_);
   }
+
+  std::string SetSamples (int sample_offset,
+                          const std::vector<int16_t>& new_samples);
+
+  std::string OverdubSamples (int sample_offset,
+                              const std::vector<int16_t>& new_samples,
+                              double orig_audio_scaling = 1.0);
+
+  std::string WriteToFile (const std::string& wav_file_path);
 
 private:
 
@@ -122,15 +138,17 @@ private:
       int n_channels, size_t n_samples_per_chan, const int16_t* in,
       int16_t* mono_out );
 
+  PackedPcmAudioHeader packed_header_;
+
+  std::vector<char> ext_header_;
+
+  struct PackedDataChunkCap {
+    uint8_t id [4];
+    uint32_t size;
+  } __attribute((packed))
+  packed_data_chunk_cap_;
+
   std::stringstream init_error_;
-
-  PackedPcmAudioHeader header_;
-
-  std::vector<std::ios::char_type> ext_header_;
-
-  struct { uint8_t id [4]; uint32_t size; } __attribute__((packed)) data_chunk_cap_;
-
-  size_t n_samples_;
 
   std::unique_ptr<SimdAlignedBuffer> sample_data_;
 };

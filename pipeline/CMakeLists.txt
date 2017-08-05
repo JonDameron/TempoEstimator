@@ -20,6 +20,7 @@ set (SOURCES
   abstract_pipeline_head.cpp
   abstract_pipeline_node.cpp
   audio_file_reader.cpp
+  complex_power.cpp
   fft_processor.cpp
   fft_processor_config.cpp
   tempo_estimator.cpp
@@ -27,4 +28,4 @@ set (SOURCES
 
 add_library (pipeline  STATIC ${SOURCES})
 
-target_link_libraries (pipeline  m fftw3)
+target_link_libraries (pipeline  boost_system boost_thread fftw3 m)

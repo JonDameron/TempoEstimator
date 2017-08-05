@@ -4,19 +4,20 @@
 
 namespace pipeline {
 
+enum class FftType {
+  kInvalid = 0,
+  kMin,
+  kComplexToComplex = kMin,
+  kComplexToReal,
+  kRealToComplex,
+  kRealToReal,
+  kMax = kRealToReal
+};
+std::string FftTypeToString (FftType type);
+
 class FftProcessorConfig
 {
 public:
-
-  enum class FftType {
-    kInvalid = 0,
-    kMin,
-    kComplexToComplex = kMin,
-    kComplexToReal,
-    kRealToComplex,
-    kRealToReal,
-    kMax = kRealToReal
-  };
 
   /** Special time limit value that prevents fftw_set_timelimit() from being
    * invoked at all. It's important to support a means of disabling this
@@ -135,22 +136,32 @@ public:
     sign_ = val;
   }
 
+  int out_len_per_fft () const {
+    // The output of a r2c transform is symmetric, and FFTW omits the mirror
+    // image:  http://www.fftw.org/fftw3_doc/Real_002ddata-DFT-Array-Format.html
+    if (FftType::kRealToComplex == type_) {
+      return fft_len_/2+1;
+    } else {
+      return fft_len_;
+    }
+  }
+
   int total_input_span_n_values () const {
     return in_dist_ * (n_ffts_-1) + in_stride_ * (fft_len_-1) + 1;
   }
 
   int total_output_span_n_values () const {
-    return out_dist_ * (n_ffts_-1) + out_stride_ * (fft_len_-1) + 1;
+    return out_dist_ * (n_ffts_-1) + out_stride_ * (out_len_per_fft()-1) + 1;
   }
 
   size_t in_value_size () const {
-    return type_ == FftType::kComplexToComplex || type_ == FftType::kComplexToReal
+    return FftType::kComplexToComplex == type_ || FftType::kComplexToReal == type_
            ? sizeof(fftw_complex)
            : sizeof(double);
   }
 
   size_t out_value_size () const {
-    return type_ == FftType::kComplexToComplex || type_ == FftType::kRealToComplex
+    return FftType::kComplexToComplex == type_ || FftType::kRealToComplex == type_
            ? sizeof(fftw_complex)
            : sizeof(double);
   }
@@ -174,6 +185,8 @@ public:
   }
 
   std::string Validate () const;
+
+  std::string ToString () const;
 
 private:
 

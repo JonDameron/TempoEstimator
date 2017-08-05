@@ -1,5 +1,5 @@
-Audio File Tempo Estimator  
-(c) 2017 Jonathan Dameron
+Musical Tempo Estimation Utility and Associated Digital Signal Processing Libraries  
+(c) 2017 Jonathan G. Dameron | jon.g.dameron@gmail.com
 
 C++11 utility that performs multi-threaded digital signal processing of raw audio data to estimate the musical tempo.
 
@@ -9,11 +9,12 @@ Build Instructions
 Required packages:
 
 libfftw3-dev  
+libboost-system-dev
 libboost-thread-dev
 
-    cd <source directory>  
-    mkdir build  
-    cmake ..  
+    cd <source directory>
+    mkdir build
+    cmake ..
     make
 
 If the build succeeds, the output binary will appear in "bin".

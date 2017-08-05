@@ -6,11 +6,13 @@ if (NOT DEFINED EXTRA_C_DEFINES)
   set (EXTRA_C_DEFINES "")
 endif (NOT DEFINED EXTRA_C_DEFINES)
 
-set (CMAKE_VERBOSE_MAKEFILE ON)
+set (CMAKE_VERBOSE_MAKEFILE OFF)
 
 set (PROJECT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-set (CMAKE_BUILD_TYPE Debug)
+if (NOT DEFINED CMAKE_BUILD_TYPE)
+  set (CMAKE_BUILD_TYPE Debug)
+endif (NOT DEFINED CMAKE_BUILD_TYPE)
 
 set (ADDITIONAL_CXX_FLAGS "${EXTRA_C_DEFINES}")
 
@@ -27,9 +29,12 @@ set (CMAKE_INSTALL_RPATH ${LIBRARY_INSTALL_PATH})
 set (CMAKE_INSTALL_RPATH_USE_LINK_PATH true)
 set (CMAKE_SKIP_BUILD_RPATH false)
 
-# Using fmax-errors option to avoid excessive compiler output
+# Using fmax-errors option to avoid excessive compiler output.
+# While it's typically wise to be aware of any warnings related to numeric
+# sign, for this test/demonstration utility we're ignoring sign-compare and
+# sign-conversion warnings.
 set (CMAKE_CXX_FLAGS
-  "-std=c++0x -fmax-errors=5 -Wall ${ADDITIONAL_CXX_FLAGS} ")
+  "-std=c++0x -fmax-errors=5 -Wall -Wno-sign-compare -Wno-sign-conversion ${ADDITIONAL_CXX_FLAGS} ")
 
 set (CMAKE_CXX_FLAGS_DEBUG
   "-ggdb3")
@@ -42,8 +47,6 @@ include_directories ("${PROJECT_BASE_DIR}")
 add_subdirectory (pipeline)
 add_subdirectory (tempo-estimator)
 add_subdirectory (utility)
-
-target_link_libraries (tempo_estimator  pipeline m boost_thread fftw3)
 
 SET(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 SET(CPACK_DEBIAN_PACKAGE_SECTION "Science")

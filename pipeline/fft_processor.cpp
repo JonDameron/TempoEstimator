@@ -81,7 +81,7 @@ string FftProcessor :: InitPlans (int n_work_units)
 
     switch (cfg_.type())
     {
-    case FftProcessorConfig::FftType::kComplexToComplex:
+    case FftType::kComplexToComplex:
       fftw_plans_.push_back(
           fftw_plan_many_dft(
               rank,
@@ -99,7 +99,7 @@ string FftProcessor :: InitPlans (int n_work_units)
               flags )
           );
       break;
-    case FftProcessorConfig::FftType::kRealToComplex:
+    case FftType::kRealToComplex:
       fftw_plans_.push_back(
           fftw_plan_many_dft_r2c(
               rank,
@@ -116,7 +116,7 @@ string FftProcessor :: InitPlans (int n_work_units)
               flags )
           );
       break;
-    case FftProcessorConfig::FftType::kComplexToReal:
+    case FftType::kComplexToReal:
       fftw_plans_.push_back(
           fftw_plan_many_dft_c2r(
               rank,
@@ -133,7 +133,7 @@ string FftProcessor :: InitPlans (int n_work_units)
               flags )
           );
       break;
-    case FftProcessorConfig::FftType::kRealToReal:
+    case FftType::kRealToReal:
       fftw_plans_.push_back(
           fftw_plan_many_r2r(
               rank,
@@ -151,6 +151,10 @@ string FftProcessor :: InitPlans (int n_work_units)
               flags )
           );
       break;
+    default:
+      cerr << "InitPlans: Unsupported FFT type '"
+           << static_cast<int>(cfg_.type()) << "'\n";
+      abort();
     }
 
     work_unit_fft_offsets_.push_back(fft_offset_this_unit);
@@ -165,6 +169,8 @@ string FftProcessor :: InitPlans (int n_work_units)
 string FftProcessor :: Process (shared_ptr<const ProcData> input,
                                 shared_ptr<ProcData>* output)
 {
+  // TODO: The 'window' config parameter currently has no effect
+
   stringstream res;
 
   const int n_work_units = fftw_plans_.size();
@@ -180,7 +186,8 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
 
   if (input->size_bytes() < total_input_span_bytes) {
     res << "Input buffer too short; minimum size = " << total_input_span_bytes
-        << ", actual size = " << input->size_bytes();
+        << ", actual size = " << input->size_bytes()
+        << ". Please try a longer audio file.";
     return res.str();
   }
 
@@ -196,7 +203,6 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
     // fftw_plan is an opaque pointer type, so we can just copy it
     fftw_plan plan       = fftw_plans_.at(unit_i);
     const int fft_offset = work_unit_fft_offsets_.at(unit_i);
-    const int n_ffts     = work_unit_n_ffts_.at(unit_i);
 
     // Have to cast away const-ness of the input data since the FFTW API
     // requires a mutable input buffer. Note that despite this, FFTW will not
@@ -211,6 +217,19 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
     void* output_start = (*output)->byte_data()
         + output_value_size * fft_offset * cfg_.out_dist();
 
+    if (!IsSimdAligned(input_start)) {
+      cerr << "Warning: FFTW input buffer offset is not SIMD-aligned for work"
+           << " unit # " << unit_i << "; this will likely result in"
+           << " significantly reduced performance (fft_offset = " << fft_offset
+           << ", cfg.in_dist = " << cfg_.in_dist() << ")\n";
+    }
+    if (!IsSimdAligned(output_start)) {
+      cerr << "Warning: FFTW output buffer offset is not SIMD-aligned for work"
+           << " unit # " << unit_i << "; this will likely result in"
+           << " significantly reduced performance (fft_offset = " << fft_offset
+           << ", cfg.out_dist = " << cfg_.out_dist() << ")\n";
+    }
+
     ThreadSquad::ThreadWorkUnit thread_work;
 
     // IMPORTANT: Because we're using the "new-array" FFTW execution functions
@@ -223,36 +242,45 @@ string FftProcessor :: Process (shared_ptr<const ProcData> input,
 
     switch (cfg_.type())
     {
-    case FftProcessorConfig::FftType::kComplexToComplex:
-      thread_work = [plan, input_start, output_start]()->string {
+    case FftType::kComplexToComplex:
+      thread_work = [plan, input_start, output_start](int thread_index)->string {
+          (void)thread_index; // Avoid 'unused param' compiler warning
           fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
           fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
           fftw_execute_dft(plan, typed_input, typed_output);
+          return "";
         };
       break;
-    case FftProcessorConfig::FftType::kRealToComplex:
-      thread_work = [plan, input_start, output_start]()->string {
+    case FftType::kRealToComplex:
+      thread_work = [plan, input_start, output_start](int thread_index)->string {
+          (void)thread_index; // Avoid 'unused param' compiler warning
           double*       typed_input  = static_cast<double*>(input_start);
           fftw_complex* typed_output = static_cast<fftw_complex*>(output_start);
           fftw_execute_dft_r2c(plan, typed_input, typed_output);
+          return "";
         };
       break;
-    case FftProcessorConfig::FftType::kComplexToReal:
-      thread_work = [plan, input_start, output_start]()->string {
+    case FftType::kComplexToReal:
+      thread_work = [plan, input_start, output_start](int thread_index)->string {
+          (void)thread_index; // Avoid 'unused param' compiler warning
           fftw_complex* typed_input  = static_cast<fftw_complex*>(input_start);
           double*       typed_output = static_cast<double*>(output_start);
           fftw_execute_dft_c2r(plan, typed_input, typed_output);
+          return "";
         };
       break;
-    case FftProcessorConfig::FftType::kRealToReal:
-      thread_work = [plan, input_start, output_start]()->string {
+    case FftType::kRealToReal:
+      thread_work = [plan, input_start, output_start](int thread_index)->string {
+          (void)thread_index; // Avoid 'unused param' compiler warning
           double* typed_input  = static_cast<double*>(input_start);
           double* typed_output = static_cast<double*>(output_start);
           fftw_execute_r2r(plan, typed_input, typed_output);
+          return "";
         };
       break;
     default:
-      cerr << "Unsupported FFT type '" << cfg_.type() << "'\n";
+      cerr << "Process: Unsupported FFT type '"
+           << static_cast<int>(cfg_.type()) << "'\n";
       abort();
     }
 

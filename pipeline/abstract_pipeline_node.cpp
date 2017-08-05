@@ -3,9 +3,10 @@
 
 using namespace std;
 using namespace pipeline;
-using AbstractPipelineNode::ReturnReason;
 
 AbstractPipelineNode :: AbstractPipelineNode ()
+: head_(nullptr),
+  output_preservation_mode_(OutputPreservationMode::kNone)
 {
 }
 
@@ -36,7 +37,8 @@ void AbstractPipelineNode :: SubmitThreadWork (ThreadSquad::ThreadWorkUnit work)
   typed_head->SubmitThreadWorkToHead(work);
 }
 
-ReturnReason AbstractPipelineNode :: InterruptibleSleep (double seconds)
+AbstractPipelineNode::ReturnReason AbstractPipelineNode :: InterruptibleSleep (
+    double seconds)
 {
   AbstractPipelineHead* typed_head = dynamic_cast<AbstractPipelineHead*>(head_);
 

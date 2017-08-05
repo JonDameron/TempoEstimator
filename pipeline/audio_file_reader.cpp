@@ -6,9 +6,9 @@ using namespace pipeline;
 
 AudioFileReader :: AudioFileReader (
     shared_ptr<ThreadSquad> thread_squad,
-    shared_ptr<PcmMonoAudioData> existing_audio_data)
+    unique_ptr<PcmMonoAudioData>&& existing_audio_data)
 : AbstractPipelineHead(thread_squad),
-  audio_data_(existing_audio_data)
+  audio_data_(std::move(existing_audio_data))
 {
 }
 
@@ -28,12 +28,11 @@ string AudioFileReader :: CollectHeadData (shared_ptr<ProcData>* data_out)
         + audio_data_->init_error();
   }
 
-  // Avoid copy overhead (uncompressed PCM audio files can be large) by invoking
-  // std::move to transfer the single existing instance of the underlying data.
-  *data_out = ProcData::New(audio_data_->MoveDataOut());
-
-  // We no longer need the PCM audio file data pointed to by audio_data_.
-  audio_data_.reset();
+  //*data_out = ProcData::New(audio_data_->MoveDataOut());
+  const size_t audio_data_size =
+      sizeof(audio_data_->samples()[0]) * audio_data_->n_samples();
+  *data_out = ProcData::New(audio_data_size);
+  memcpy((*data_out)->untyped_data(), audio_data_->samples(), audio_data_size);
 
   return "";
 }

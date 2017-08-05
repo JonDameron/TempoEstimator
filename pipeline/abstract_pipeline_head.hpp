@@ -6,9 +6,10 @@
 #include <string>
 #include <vector>
 #include <boost/thread/thread.hpp>
+#include "pipeline/abstract_pipeline_node.hpp"
 #include "utility/proc_data.hpp"
 #include "utility/thread_squad.hpp"
-#include "pipeline/abstract_pipeline_node.hpp"
+#include "utility/util.hpp"
 
 namespace pipeline {
 
@@ -35,9 +36,29 @@ public:
 
   virtual ~AbstractPipelineHead ();
 
+  std::string pipeline_error_str () const {
+    std::unique_lock<std::mutex> lock (const_cast<std::mutex&>(state_mutex_));
+    return pipeline_error_str_;
+  }
+
   std::string Start ();
 
+  /** Stop pipeline execution and block until the main pipeline thread
+   * has exited.
+   * Calling this method while another thread is waiting for either
+   * WaitForProcessingCompletion() or Stop() to return can result in
+   * undefined behavior.
+   */
   void Stop ();
+
+  /** Block until the main pipeline thread has exited.  Note that the main
+   * thread won't exit until all pending thread work units have been
+   * fully processed.
+   * Calling this method while another thread is waiting for either
+   * WaitForProcessingCompletion() or Stop() to return can result in
+   * undefined behavior.
+   */
+  void WaitForProcessingCompletion ();
 
 protected:
 
@@ -52,12 +73,12 @@ protected:
 
 private:
 
-  std::string MainPipelineThreadFunc ();
+  void MainPipelineThreadFunc ();
 
   void SubmitThreadWorkToHead (ThreadSquad::ThreadWorkUnit func);
 
   std::string Process (std::shared_ptr<const ProcData> input_UNUSED,
-                       std::shared_ptr<ProcData>* output) override;
+                       std::shared_ptr<ProcData>* output) OVERRIDE;
 
   /** Use of interrupt_condvar is optional
    */
@@ -72,6 +93,8 @@ private:
   std::condition_variable state_change_condvar_;
 
   std::shared_ptr<ThreadSquad> thread_squad_;
+
+  std::string pipeline_error_str_;
 };
 
 }

@@ -25,4 +25,4 @@ set (SOURCES
 
 add_library (utility  STATIC ${SOURCES})
 
-target_link_libraries (utility  m fftw3)
+target_link_libraries (utility  boost_system boost_thread fftw3 m)

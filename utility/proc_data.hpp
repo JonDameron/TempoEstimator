@@ -4,30 +4,38 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include "utility/util.hpp"
 
 class ProcData
 {
-private:
+public:
 
   /* New ProcData instances are expected to be constructed relatively
-   * frequently. To avoid memory leaks, each instance must be wrapped in a
-   * shared_ptr via the static method ProcData::New().
+   * frequently. To avoid memory leaks, a new instance should be wrapped in a
+   * shared_ptr via the static method ProcData::New() whenever feasible,
+   * instead of direct invocation of these contructors.
    */
 
   /** Constructs a new ProcData with uninitialized data buffer of given size.
    */
   explicit ProcData (size_t size_bytes);
 
+  /** Copy constructor
+   */
+  ProcData (const ProcData& copy_src);
+
   /** Transfers data from an existing SimdAlignedBuffer without incurring
    * copy overhead.
+   * Also, deliberately not designating this ctor as explicit so that its
+   * compatibility with standard algorithms, e.g. std::swap.
    */
-  explicit ProcData (std::unique_ptr<SimdAlignedBuffer>&& move_src);
-
-public:
+  ProcData (std::unique_ptr<SimdAlignedBuffer>&& move_src);
 
   static std::shared_ptr<ProcData> New ();
 
   static std::shared_ptr<ProcData> New (size_t size_bytes);
+
+  static std::shared_ptr<ProcData> New (const ProcData& copy_src);
 
   static std::shared_ptr<ProcData> New (std::unique_ptr<SimdAlignedBuffer>&& move_src);
 
@@ -43,6 +51,10 @@ public:
    */
   size_t n_doubles () const {
     return buf_->size() / sizeof(double);
+  }
+
+  size_t n_complex_doubles () const {
+    return buf_->size() / sizeof(std::complex<double>);
   }
 
   size_t size_bytes () const {

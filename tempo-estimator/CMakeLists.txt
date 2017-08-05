@@ -6,4 +6,4 @@ set (SOURCES
 
 add_executable (tempo_estimator  ${SOURCES})
 
-target_link_libraries (tempo_estimator  pipeline m boost_thread fftw3)
+target_link_libraries (tempo_estimator  pipeline utility)

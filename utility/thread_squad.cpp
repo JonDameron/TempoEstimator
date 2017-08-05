@@ -21,9 +21,10 @@ ThreadSquad :: ~ThreadSquad ()
     is_running_ = false;
     squad_state_changed_condvar_.notify_all();
 
-    for (WorkCountInfo& work_count_info : work_count_by_submitter_) {
-      unique_lock<mutex> work_count_info_lock (work_count_info.mux);
-      work_count_info.count_is_zero_condvar.notify_all();
+    for (pair<const pid_t, WorkCountInfo>& map_item : work_count_by_submitter_) {
+      WorkCountInfo& work_count_info = map_item.second;
+      unique_lock<mutex> work_count_info_lock (*work_count_info.mux);
+      work_count_info.count_is_zero_condvar->notify_all();
     }
     work_count_by_submitter_.clear();
   }
@@ -43,13 +44,20 @@ void ThreadSquad :: PushThreadWork (ThreadWorkUnit work_unit)
 
   // GetCurrentThreadId() returns a unique ID (lightweight PID) for each thread
   const pid_t this_thread_lwpid = GetCurrentThreadId();
-  pair<pid_t, WorkCountInfo> new_map_item (this_thread_lwpid, WorkCountInfo(0));
 
   // If the current thread already has its own mapping in
   // work_count_by_submitter_, then the returned insert() iterator
   // (insert_result.first) will point to it instead of a new entry created
   // for new_map_item
-  auto insert_result = work_count_by_submitter_.insert(new_map_item);
+
+  /** For future reference, when supporting gcc < 4.8.0 is no longer necessary.
+    * See comments in WorkCountInfo definition.
+  auto insert_result = work_count_by_submitter_.emplace(piecewise_construct_t(),
+      make_tuple(this_thread_lwpid), make_tuple(0));
+  */
+
+  auto insert_item = make_pair(this_thread_lwpid, WorkCountInfo(0));
+  auto insert_result = work_count_by_submitter_.insert(insert_item);
 
   // insert_result.first is an iterator to the item of interest, which is
   // a pair<KeyType, ValueType>.
@@ -57,7 +65,7 @@ void ThreadSquad :: PushThreadWork (ThreadWorkUnit work_unit)
 
   // It's safe to lock a WorkCountInfo mutex while also possessing the squad
   // state mutex
-  unique_lock<mutex> work_count_info_lock (insert_result.first->second.mux);
+  unique_lock<mutex> work_count_info_lock (*insert_result.first->second.mux);
   ++insert_result.first->second.count;
 }
 
@@ -72,15 +80,15 @@ void ThreadSquad :: WaitForWorkUnits (pid_t thread_id_of_submitter)
     }
     info = &map_iter->second;
     // Essential to acquire this mutex before relinquishing squad_state_mutex_
-    info->mux.lock();
+    info->mux->lock();
   }
 
   // Note that we already have ownership of info->mux
-  { unique_lock<mutex> work_count_info_lock (info->mux, std::adopt_lock_t());
+  { unique_lock<mutex> work_count_info_lock (*info->mux, std::adopt_lock_t());
     if (0 == info->count) {
       return; // no work is pending for given thread ID (LWPID)
     }
-    info->count_is_zero_condvar.wait(work_count_info_lock);
+    info->count_is_zero_condvar->wait(work_count_info_lock);
   }
 }
 
@@ -109,19 +117,20 @@ void ThreadSquad :: ThreadFunc (int thread_id)
     // Regardless of execution result, decrement pending work unit counter for
     // the thread that submitted the work
     { unique_lock<mutex> lock (squad_state_mutex_);
-      auto work_count_info_iter = work_count_by_submitter_.find(queued_work.submitter_pid);
+      auto work_count_info_iter =
+          work_count_by_submitter_.find(queued_work.submitter_pid);
       // There are conceivable cases, e.g. ThreadSquad is undergoing destruction,
       // in which this map find() operation can fail
       if (work_count_by_submitter_.end() != work_count_info_iter)
       {
         // It's safe to lock a WorkCountInfo mutex while also possessing the
         // squad state mutex
-        unique_lock<mutex> work_count_info_lock (work_count_info_iter->second.mux);
+        unique_lock<mutex> work_count_info_lock (*work_count_info_iter->second.mux);
         --work_count_info_iter->second.count;
         // Sanity check
         assert(work_count_info_iter->second.count >= 0);
         if (0 == work_count_info_iter->second.count) {
-          work_count_info_iter->second.count_is_zero_condvar.notify_all();
+          work_count_info_iter->second.count_is_zero_condvar->notify_all();
           // TODO: Eventually remove mapped WorkCountInfo instances when count
           // reaches zero to save a small amount of memory
         }
