@@ -28,6 +28,8 @@ The Audio File Tempo Estimator reads music data in the form of a .wav file (unco
 
 The output file name will match that of the input, with extension ".TEMPO.wav" instead of ".wav".
 
+Sample audio input files are available in the "sample_input" directory. All provided songs are in the US public domain. See included text file in "sample_input".
+
 Source Code Notes
 -----------------
 
