@@ -62,12 +62,12 @@ static const int kDefaultNPipelineProcThreads = 4;
 
 static const double kDefaultFftwPlannerTimeLimitSec = 1.0;
 
-static const double kMinAcceptableTempoBpm = 61.0;
-static const double kMaxAcceptableTempoBpm = 181.0;
+static const double kMinAcceptableTempoBpm = 59.0;
+static const double kMaxAcceptableTempoBpm = 161.0;
 
-static const double kMetronomeTickAmplitude   = 0.30;
-static const double kMetronomeTickDurationSec = 0.12;
-static const double kMetronomeToneFreq        = 220; // 220 => A lovely 'A3'
+static const double kMetronomeTickAmplitude   = 0.35;
+static const double kMetronomeTickDurationSec = 0.10;
+static const double kMetronomeToneFreq        = 1397; // 1397 => A lovely 'F6'
 
 /** Sadly, because there is no simple way that I am aware of to pass arbitrary
  * user data to a signal handler (not even via sigaction), we must use a global
@@ -80,7 +80,7 @@ static void Usage (const string& progname)
 {
   cout << "Music file tempo estimation utility\n"
        << "(c) 2017 Jonathan G. Dameron\n"
-       << "USAGE: " << progname << "\n"
+       << "USAGE: " << progname << " -i INPUT_WAV_FILE [other options]\n"
        << "  -d        Print debug info\n"
        << "  -f  N     Set frequency profile granularity (N per second, default = "
            << kDefaultLevelOneFftsPerSecond << ")\n"
@@ -139,6 +139,8 @@ void OverdubMetronome(
   // TODO: Eventually support sample formats other than signed 16-bit int
   assert(16 == out_audio->header().n_bits_per_sample);
 
+  const double n_samples_per_sec = out_audio->header().n_samples_per_sec;
+
   const int metronome_n_samples =
       (int)(tick_duration_sec * out_audio->header().n_samples_per_sec);
 
@@ -146,7 +148,7 @@ void OverdubMetronome(
   for (int i = 0; i < metronome_n_samples; ++i) {
     metronome_tick[i] =
         tick_amplitude * SHRT_MAX
-        * cos(2*M_PI*tone_frequency * (double)i / metronome_n_samples);
+        * cos(2*M_PI*tone_frequency * (double)i / n_samples_per_sec);
   }
 
   const double tempo_n_samples_per_beat =
@@ -431,7 +433,7 @@ int main (int argc, char** argv)
   OverdubMetronome(
       tempo_offset_seconds + 0.5 * 60.0/average_tempo_bpm,
       average_tempo_bpm,
-      kMetronomeTickAmplitude * 0.25,
+      kMetronomeTickAmplitude * 0.4,
       // 2^(-5/12) moves us backward in frequency to the musical note a perfect
       // fourth lower than the first metronome note.
       // This combination is pleasing to the ear, more or less.

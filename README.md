@@ -14,7 +14,6 @@ libboost-thread-dev
 
     cd <source directory>
     mkdir build
-    cd build
     cmake ..
     make
 
