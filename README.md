@@ -22,7 +22,7 @@ If the build succeeds, the output binary will appear in "bin".
 Usage Instructions
 ------------------
 
-    bin/jon_dameron_tempo_estimator -i INPUT_WAV_FILE [other options]
+    bin/tempo_estimator -i INPUT_WAV_FILE [other options]
 
 Run with -h to see the full usage message with a list of all options.
 
