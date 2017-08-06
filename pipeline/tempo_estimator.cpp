@@ -119,7 +119,7 @@ double TempoEstimator :: EstimateTempoOffsetNSamples (
   assert(corr_in_1_len >= corr_in_2_len);
 
   // The length of the correlation output is input #1 len - input #2 len + 1
-  vector<double> corr_output_vec (corr_in_1_len - corr_in_2_len + 1);
+  vector<double> corr_out (corr_in_1_len - corr_in_2_len + 1);
 
   res = Correlate( corr_in_1,
                    corr_in_1_step,
@@ -127,15 +127,15 @@ double TempoEstimator :: EstimateTempoOffsetNSamples (
                    corr_in_2,
                    corr_in_2_step,
                    corr_in_2_len,
-                   corr_output_vec.data(),
-                   corr_output_vec.size() );
+                   corr_out.data(),
+                   corr_out.size() );
   // If Correlate() returned an error, then there's a software bug
   assert(res.empty());
 
-  auto corr_peak_iter = std::max_element(corr_output_vec.begin(),
-                                         corr_output_vec.end());
+  auto corr_peak_iter = std::max_element(corr_out.begin(),
+                                         corr_out.end());
 
-  const int corr_peak_index = corr_peak_iter - corr_output_vec.begin();
+  const int corr_peak_index = corr_peak_iter - corr_out.begin();
 
   // The correlation peak index properly aligns the beat pulse train over the
   // audio input power vector, but we need to add a fraction of the width of
@@ -149,6 +149,147 @@ double TempoEstimator :: EstimateTempoOffsetNSamples (
       * level_1_fft_len;
 
   return offset_n_samples;
+}
+
+double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
+    const vector<pair<double, double>>& level_2_weighted_fft_peaks)
+{
+  /* The input level_2_weighted_fft_peaks matrix dimensions are
+   * nGroups X nFfts. Each value is a pair with first = *weighted* index of the
+   * level-2 FFT output bin whose corresponding power is the max for that FFT,
+   * and second = power of bin corresponding to index <first>.
+   * We're going to set up a new array of length level2FftOutLen that transforms
+   * the input as follows:
+   * init newarr [ 0..level2FftOutLen-1 ] = 0
+   * (this sum deliberately ignores power in favor of # appearances)
+   * newarr [ floor(0.5 + in[grp, ffti].first) ] += 1
+   *
+   * Then, we correlate the new array with a 2-point boxcar vector to identify
+   * the 'most popular' tempo detection bin.
+   *
+   * Next, sort the input by weighted index and locate the start of the cluster
+   * of interest corresponding to the result of the boxcar correlation, move to
+   * the approximate center of the cluster, and move in both directions until the
+   * difference in adjacent weighted indices is sufficiently large (indicating
+   * departure from said cluster).
+   *
+   * Finally, perform a weighted average of the 'popular' cluster by multiplying
+   * fourth root of power by weighted index, summing, and dividing the result
+   * by the sum of the fourth roots of the powers. The final weighted average
+   * is the floating-point bin index to be returned to the application following
+   * some basic conversions.
+   *
+   * Fourth root explanation:
+   * sqrt(LevelTwoPower) => LevelTwoMagnitude => LevelOnePower
+   * and sqrt(LevelOnePower) => LevelOneMagnitude
+   */
+
+  const int n_groups = level_1_fft_cfg_.n_ffts() / level_2_fft_cfg_.fft_len();
+
+  const int n_level_2_ffts_per_group =
+      level_1_fft_cfg_.out_len_per_fft() / level_2_fft_cfg_.in_dist();
+
+  // Verify that the caller is invoking this method correctly
+  assert(level_2_weighted_fft_peaks.size() ==
+         n_groups * n_level_2_ffts_per_group);
+
+  string res;
+
+  // Adding 1 to length to account for theoretically possible weighting
+  // correction placing the new index just past the end.
+  // The element type is 'double' because the vec will be passed to the
+  // correlation function.
+  vector<double> popularity_vec (level_2_fft_cfg_.out_len_per_fft() + 1, 0);
+  for (const pair<double, double>& weighted_peak : level_2_weighted_fft_peaks) {
+    ++ popularity_vec.at(floor(0.5 + weighted_peak.first));
+  }
+
+  vector<double> boxcar (2, 0.5);
+
+  const double* corr_in_1  = popularity_vec.data();
+  const int corr_in_1_step = 1;
+  const int corr_in_1_len  = popularity_vec.size();
+  const double* corr_in_2  = boxcar.data();
+  const int corr_in_2_step = 1;
+  const int corr_in_2_len  = boxcar.size();
+
+  vector<double> corr_out (popularity_vec.size() - boxcar.size() + 1);
+
+  res = Correlate( corr_in_1,
+                   corr_in_1_step,
+                   corr_in_1_len,
+                   corr_in_2,
+                   corr_in_2_step,
+                   corr_in_2_len,
+                   corr_out.data(),
+                   corr_out.size() );
+  // If Correlate() returned an error, then there's a software bug
+  assert(res.empty());
+
+  auto popularity_start_iter =
+      std::max_element(corr_out.begin(), corr_out.end());
+  const int popularity_start_bin_index = popularity_start_iter - corr_out.begin();
+
+  vector<pair<double, double>> sorted_peaks = level_2_weighted_fft_peaks;
+  std::sort( sorted_peaks.begin(), sorted_peaks.end(),
+      [](const pair<double, double>& v1, const pair<double, double>& v2)->bool {
+          return v1.first < v2.first;
+        } );
+
+  // Avoid corner cases in which there's a handful of bogus hits close
+  // to the true cluster of tempo bins
+  const double popularity_sum_start_index = 0.5 + popularity_start_bin_index;
+
+  auto peak_start_iter = std::find_if(
+      sorted_peaks.begin(), sorted_peaks.end(),
+      [popularity_sum_start_index](const pair<double, double>& val)->bool {
+          return (int)(0.5 + val.first) >= popularity_sum_start_index;
+        } );
+
+  // Move backward until the step distance exceeds a threshold (i.e., until
+  // we seem to have exited the cluster of interest)
+
+  const double cluster_contiguity_threshold = 0.5;
+
+  // Condition "> begin()" which skips the first element is intentional
+  auto cluster_start_iter = peak_start_iter;
+  for (; cluster_start_iter > sorted_peaks.begin(); --cluster_start_iter)
+  {
+    if (cluster_start_iter->first - (cluster_start_iter-1)->first
+            > cluster_contiguity_threshold) {
+      break;
+    }
+  }
+
+  // Perform weighted sum (iter->first is the peak bin index, second is
+  // the weight)
+  double weighted_sum = 0;
+  auto cluster_end_iter = sorted_peaks.end();
+  // Sanity check -- this condition would break the following loop, and should
+  // never happen
+  assert(cluster_start_iter != sorted_peaks.end());
+  for (auto iter = cluster_start_iter; true; ++iter)
+  {
+    // To save time, overwrite weights of our (function-local) vector with their
+    // fourth roots (see explanation at the top of this function)
+    iter->second = pow(iter->second, 0.25);
+    weighted_sum += iter->first * iter->second;
+    if (iter == sorted_peaks.end()-1
+          || (iter+1)->first - iter->first > cluster_contiguity_threshold) {
+      cluster_end_iter = iter+1;
+      break;
+    }
+  }
+
+  // Calculate average by dividing by the sum of the weights
+  double sum_of_weights = 0;
+  for (auto iter = cluster_start_iter; iter < cluster_end_iter; ++iter) {
+    sum_of_weights += iter->second;
+  }
+
+  const double tempo_bin_relative_to_level_2_fft = weighted_sum / sum_of_weights;
+
+  return tempo_bin_relative_to_level_2_fft;
 }
 
 string TempoEstimator :: Process (shared_ptr<const ProcData> input,
@@ -195,6 +336,9 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
       level_2_in_pwr.size() / n_level_2_ffts_per_group,
       1.0 );
 
+  const int level_2_fft_start = (int)(n_level_2_ffts_per_group * 0.2);
+  const int level_2_fft_stop  = (int)(n_level_2_ffts_per_group * 0.8);
+
   // g: group index
   // b: level-2 bin index
   // f: level-2 FFT index
@@ -204,8 +348,6 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
     for (int b = 0; b < level_2_out_n_bins; ++b)
     {
       const int b_start = g_start + b;
-      const int level_2_fft_start = (int)(n_level_2_ffts_per_group * 0.2);
-      const int level_2_fft_stop  = (int)(n_level_2_ffts_per_group * 0.8);
       double sum = 0;
       for (int f = level_2_fft_start; f < level_2_fft_stop; ++f)
       {
@@ -351,34 +493,33 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
       } );
 #endif
 
-  // TODO: Eventually only print the following diagnostic info if a 'verbose'
-  // option is enabled
-
-  cout << "\n";
-
-  cout << "Level-1 FFT configuration:\n" << level_1_fft_cfg_.ToString() << "\n\n";
-  cout << "Level-2 FFT configuration:\n" << level_2_fft_cfg_.ToString() << "\n\n";
-
-#if 1
-  for (int f = 0; f < level_2_fft_cfg_.n_ffts(); ++f)
+  if (node_debug_enabled())
   {
-    cout << "level_2_weighted_fft_peaks[" << f << "] = "
-         << level_2_weighted_fft_peaks.at(f).first
-         << " , " << level_2_weighted_fft_peaks.at(f).second << "\n";
-  }
-#endif
+    cout << "\n";
+    cout << "Level-1 FFT configuration:\n" << level_1_fft_cfg_.ToString() << "\n\n";
+    cout << "Level-2 FFT configuration:\n" << level_2_fft_cfg_.ToString() << "\n\n";
 
-  cout << "\n";
+    for (int f = 0; f < level_2_fft_cfg_.n_ffts(); ++f)
+    {
+      cout << "level_2_weighted_fft_peaks[" << f << "] = "
+           << level_2_weighted_fft_peaks.at(f).first
+           << " , " << level_2_weighted_fft_peaks.at(f).second << "\n";
+    }
 
-  for (int g = 0; g < n_groups; ++g)
-  {
-    cout << "level_2_weighted_fft_group_peaks[" << g << "] = "
-         << level_2_weighted_fft_group_peaks.at(g).first
-         << " , " << level_2_weighted_fft_group_peaks.at(g).second
-         << "; level_2_fft_group_peaks[" << g << "] = "
-         << level_2_fft_group_peaks.at(g).first
-         << " , " << level_2_fft_group_peaks.at(g).second
-         << "\n";
+    cout << "\n";
+
+    for (int g = 0; g < n_groups; ++g)
+    {
+      cout << "level_2_weighted_fft_group_peaks[" << g << "] = "
+           << level_2_weighted_fft_group_peaks.at(g).first
+           << " , " << level_2_weighted_fft_group_peaks.at(g).second
+           << "; level_2_fft_group_peaks[" << g << "] = "
+           << level_2_fft_group_peaks.at(g).first
+           << " , " << level_2_fft_group_peaks.at(g).second
+           << "\n";
+    }
+
+    cout << "\n";
   }
 
   // As implied by the names, some of these values are counts of time-domain
@@ -397,15 +538,19 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
       level_2_fft_cfg_.fft_len() / (double)max_beat_rate_bin_index
       * n_time_samples_per_level_1_fft;
 
+  //const double level_2_bin_index_for_tempo_estimate = max_group_peak_bin_index;
+  const double level_2_bin_index_for_tempo_estimate =
+      CalcLevelTwoTempoBinUsingPopularityMethod(level_2_weighted_fft_peaks);
+
   double tempo_estimate_samples_per_beat =     // Nyquist => max measurable tempo
       n_time_samples_per_max_beat_rate_interval * (double)max_beat_rate_bin_index
-      / max_group_peak_bin_index;
+      / level_2_bin_index_for_tempo_estimate;
 
   if (tempo_estimate_samples_per_beat < min_acceptable_tempo_samples_per_beat_)
   {
     // Scale it up by the smallest power of two that would place it above the
     // 'acceptable' minimum. Using a power of two so we won't get a polyrhythmic
-    // effect for 4/4 time signature music.
+    // effect for 4/4 time signature songs.
     const int linear_scale = 1 + (int)(min_acceptable_tempo_samples_per_beat_
                                        / tempo_estimate_samples_per_beat);
     const int exp_scale = 1 << (int)ceil(log2(linear_scale));
@@ -414,12 +559,14 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
   }
   else if (tempo_estimate_samples_per_beat > max_acceptable_tempo_samples_per_beat_)
   {
-    // Scale it down by the smallest integer that would place it below the
-    // 'acceptable' maximum
-    const int scale = 1 + (int)(tempo_estimate_samples_per_beat
-                                / max_acceptable_tempo_samples_per_beat_);
+    // Scale it down by the smallest power of two that would place it below the
+    // 'acceptable' maximum. Using a power of two so we won't get a polyrhythmic
+    // effect for 4/4 time signature songs.
+    const int linear_scale = 1 + (int)(tempo_estimate_samples_per_beat
+                                       / max_acceptable_tempo_samples_per_beat_);
+    const int exp_scale = 1 << (int)ceil(log2(linear_scale));
 
-    tempo_estimate_samples_per_beat /= scale;
+    tempo_estimate_samples_per_beat /= exp_scale;
   }
 
   const int group_start_bin_for_tempo_offset_ref = 0; // Use first group

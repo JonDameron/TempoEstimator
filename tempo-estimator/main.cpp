@@ -81,10 +81,13 @@ static void Usage (const string& progname)
   cout << "Music file tempo estimation utility\n"
        << "(c) 2017 Jonathan G. Dameron\n"
        << "USAGE: " << progname << "\n"
-       << "  -f  Set frequency profile granularity (N per second) [default = "
-           << kDefaultLevelOneFftsPerSecond << "]\n"
-       << "  -i  Set raw PCM input file (.wav)\n"
-       << "  -h  Show this usage message\n"
+       << "  -d        Print debug info\n"
+       << "  -f  N     Set frequency profile granularity (N per second, default = "
+           << kDefaultLevelOneFftsPerSecond << ")\n"
+       << "  -h        Show this usage message\n"
+       << "  -i  FILE  Set raw PCM input file (.wav)\n"
+       << "  -t  N     Set # threads to use for processing (default = "
+           << kDefaultNPipelineProcThreads << ")\n"
        ;
 }
 
@@ -271,13 +274,15 @@ int main (int argc, char** argv)
   int level_2_fft_spacing = kDefaultLevelTwoFftSpacing;
   double level_2_fft_span_sec = kDefaultLevelTwoFftSpanSeconds;
   int n_pipeline_proc_threads = kDefaultNPipelineProcThreads;
+  bool debug_enabled = false;
 
   string in_file_path;
 
   // Handle the command line arguments.
   char ch = 0;
-  while ( EOF != (ch = getopt(argc, argv, "f:hi:t:")) ) {
+  while ( EOF != (ch = getopt(argc, argv, "df:hi:t:")) ) {
     switch (ch) {
+    case 'd': debug_enabled = true; break;
     case 'f': level_1_n_ffts_per_sec_target = strtof(optarg, nullptr); break;
     case 'h': Usage(progname); return EXIT_SUCCESS;
     case 'i': in_file_path = optarg; break;
@@ -316,6 +321,8 @@ int main (int argc, char** argv)
   // of the AudioFileReader construction
   auto audio_file_reader = make_shared<pipeline::AudioFileReader>(
       thread_squad, std::move(in_audio));
+
+  audio_file_reader->set_pipeline_debug_enabled(debug_enabled);
 
   auto type_converter =
       make_shared<pipeline::TypeConverter<int16_t, double>>();
@@ -416,6 +423,19 @@ int main (int argc, char** argv)
       average_tempo_bpm,
       kMetronomeTickAmplitude,
       kMetronomeToneFreq,
+      kMetronomeTickDurationSec,
+      out_audio.get() );
+
+  // Add a second, quieter tone at a different frequency to also highlight
+  // the off-beats (i.e., add ticks exactly half-way between the primary ticks)
+  OverdubMetronome(
+      tempo_offset_seconds + 0.5 * 60.0/average_tempo_bpm,
+      average_tempo_bpm,
+      kMetronomeTickAmplitude * 0.25,
+      // 2^(-5/12) moves us backward in frequency to the musical note a perfect
+      // fourth lower than the first metronome note.
+      // This combination is pleasing to the ear, more or less.
+      kMetronomeToneFreq * pow(2, -5/12.0),
       kMetronomeTickDurationSec,
       out_audio.get() );
 

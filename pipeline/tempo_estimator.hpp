@@ -55,6 +55,9 @@ private:
   double EstimateTempoOffsetNSamples (double tempo_n_samples_per_beat,
                                       int level_1_reference_bin_index);
 
+  double CalcLevelTwoTempoBinUsingPopularityMethod (
+      const std::vector<std::pair<double, double>>& level_2_weighted_fft_peaks);
+
   std::string Process (std::shared_ptr<const ProcData> input,
                        std::shared_ptr<ProcData>* output) OVERRIDE;
 

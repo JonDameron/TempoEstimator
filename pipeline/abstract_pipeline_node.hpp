@@ -69,12 +69,20 @@ public:
     return process_error_str_;
   }
 
+  void set_node_debug_enabled (bool value) {
+    node_debug_enabled_ = value;
+  }
+
   std::string ConnectOutput (std::shared_ptr<AbstractPipelineNode> output_node);
 
 protected:
 
   std::shared_ptr<AbstractPipelineNode> output_node () {
     return output_node_;
+  }
+
+  bool node_debug_enabled () const {
+    return node_debug_enabled_;
   }
 
   void SubmitThreadWork (ThreadSquad::ThreadWorkUnit work);
@@ -121,6 +129,11 @@ private:
    * prevent a head node instance from being automatically destructed.
    */
   AbstractPipelineNode* head_;
+
+  /** Node-specific debug setting.
+   * See also AbstractPipelineHead::pipeline_debug_enabled_
+   */
+  bool node_debug_enabled_;
 
   std::shared_ptr<AbstractPipelineNode> output_node_;
 

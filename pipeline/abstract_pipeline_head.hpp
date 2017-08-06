@@ -41,6 +41,10 @@ public:
     return pipeline_error_str_;
   }
 
+  void set_pipeline_debug_enabled (bool value) {
+    pipeline_debug_enabled_ = value;
+  }
+
   std::string Start ();
 
   /** Stop pipeline execution and block until the main pipeline thread
@@ -83,6 +87,10 @@ private:
   /** Use of interrupt_condvar is optional
    */
   virtual std::string CollectHeadData (std::shared_ptr<ProcData>* data_out) = 0;
+
+  /** General debug-enabled setting for the entire pipeline.
+   */
+  bool pipeline_debug_enabled_;
 
   bool is_running_;
 

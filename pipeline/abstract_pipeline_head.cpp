@@ -10,7 +10,8 @@ using namespace std;
 using namespace pipeline;
 
 AbstractPipelineHead :: AbstractPipelineHead (shared_ptr<ThreadSquad> thread_squad)
-: is_running_(false),
+: pipeline_debug_enabled_(false),
+  is_running_(false),
   thread_squad_(thread_squad)
 {
 }
@@ -29,8 +30,12 @@ string AbstractPipelineHead :: Start ()
   }
 
   AbstractPipelineNode* node = this;
-  while (node) {
+  while (node)
+  {
     node->SetHead(this);
+    if (pipeline_debug_enabled_) {
+      node->set_node_debug_enabled(true);
+    }
     node = node->output_node().get();
   }
 
