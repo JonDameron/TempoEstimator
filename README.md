@@ -22,7 +22,9 @@ If the build succeeds, the output binary will appear in "bin".
 Usage Instructions
 ------------------
 
-    bin/jon_dameron_tempo_estimator -i INPUT_WAV_FILE [-f FFT_PROFILES_PER_SEC]
+    bin/jon_dameron_tempo_estimator -i INPUT_WAV_FILE [other options]
+
+Run with -h to see the full usage message with a list of all options.
 
 The Audio File Tempo Estimator reads music data in the form of a .wav file (uncompressed PCM), attempts to estimate the tempo of the music, and outputs a new .wav file with two alternating metronome click sounds. One marks the beats, the other (quieter) marks the offbeats.
 
