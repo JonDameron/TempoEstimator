@@ -9,7 +9,7 @@ Build Instructions
 Required packages:
 
 libfftw3-dev  
-libboost-system-dev
+libboost-system-dev  
 libboost-thread-dev
 
     cd <source directory>
@@ -22,9 +22,11 @@ If the build succeeds, the output binary will appear in "bin".
 Usage Instructions
 ------------------
 
-The Audio File Tempo Estimator reads music data in the form of a .wav file (uncompressed PCM), attempts to estimate the tempo of the music, and outputs a new .wav file with metronome click sounds marking the beats.
-
     bin/jon_dameron_tempo_estimator -i INPUT_WAV_FILE [-f FFT_PROFILES_PER_SEC]
+
+The Audio File Tempo Estimator reads music data in the form of a .wav file (uncompressed PCM), attempts to estimate the tempo of the music, and outputs a new .wav file with two alternating metronome click sounds. One marks the beats, the other (quieter) marks the offbeats.
+
+The utility usually produces reasonably accurate output for music files that have a rigid tempo with only small fluctuations; if the song was originally recorded with a metronome for reference, this condition is probably met. Tracking of substantial tempo fluctuation over the course of a song is not currently supported.
 
 The output file name will match that of the input, with extension ".TEMPO.wav" instead of ".wav".
 
