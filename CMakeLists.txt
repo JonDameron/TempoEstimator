@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 2.8)
 
-project (tempo-estimator)
+project (tempo_estimator)
 
 if (NOT DEFINED EXTRA_C_DEFINES)
   set (EXTRA_C_DEFINES "")
@@ -45,7 +45,7 @@ set (CMAKE_CXX_FLAGS_RELEASE
 include_directories ("${PROJECT_BASE_DIR}")
 
 add_subdirectory (pipeline)
-add_subdirectory (tempo-estimator)
+add_subdirectory (tempo_estimator)
 add_subdirectory (utility)
 
 SET(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")

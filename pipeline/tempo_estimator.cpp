@@ -199,9 +199,20 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
   // correction placing the new index just past the end.
   // The element type is 'double' because the vec will be passed to the
   // correlation function.
+  // Note that we're ignoring the bins near the FFT output extremeties.
+
   vector<double> popularity_vec (level_2_fft_cfg_.out_len_per_fft() + 1, 0);
-  for (const pair<double, double>& weighted_peak : level_2_weighted_fft_peaks) {
-    ++ popularity_vec.at(floor(0.5 + weighted_peak.first));
+  const int popularity_vec_min_bin =
+      std::max(10, (int)(0.003 * popularity_vec.size()));
+  const int popularity_vec_max_bin =
+      (int)(0.997 * popularity_vec.size());
+  for (const pair<double, double>& weighted_peak : level_2_weighted_fft_peaks)
+  {
+    const int peak_bin_index = (int) floor(0.5 + weighted_peak.first);
+    if (peak_bin_index >= popularity_vec_min_bin
+          && peak_bin_index <= popularity_vec_max_bin) {
+      ++ popularity_vec.at(peak_bin_index);
+    }
   }
 
   vector<double> boxcar (2, 0.5);
