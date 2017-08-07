@@ -59,18 +59,30 @@ struct PackedPcmAudioHeader
      at this position containing extra information, for example, the song name.
      This size-zero member acts as a pointer to the position of the header that
      might contain the LIST data instead of the 'standard' fields.
-     Since a LIST at this position can be any size (specified after the 'LIST'
-     4CC), we can't make this cleaner via a union.
    */
-  uint8_t optional_special_chunk_position [0];
+  union
+  {
+    struct {
+      /** .wav specification: "Size of the extension"
+       */
+      uint16_t cb_size;
+      uint16_t n_valid_bits_per_sample;
+      uint32_t channel_mask;
+    } __attribute__((packed)) std_data;
 
-  /** .wav specification: "Size of the extension"
-   */
-  uint16_t cb_size;
+    struct {
+      uint8_t chunk_id [4];
+      uint32_t chunk_size;
+    } __attribute__((packed)) list_chunk_cap;
 
-  uint16_t n_valid_bits_per_sample;
+    struct {
+      uint8_t chunk_id [4];
+      uint32_t chunk_size;
+    } __attribute__((packed)) data_chunk_cap;
 
-  uint32_t channel_mask;
+    uint8_t bytes [8];
+  }
+  optional_special_chunk;
 
   uint8_t optional_special_chunk_content_position [0];
 
