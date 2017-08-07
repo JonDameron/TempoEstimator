@@ -60,7 +60,7 @@ static const int kDefaultLevelTwoFftSpacing = 2; //16
 
 static const int kDefaultNPipelineProcThreads = 4;
 
-static const double kDefaultFftwPlannerTimeLimitSec = 1.0;
+static const double kDefaultFftwPlannerTimeLimitSec = 0.5;
 
 static const double kMinAcceptableTempoBpm = 59.0;
 static const double kMaxAcceptableTempoBpm = 161.0;
@@ -214,6 +214,13 @@ void MakeLevelOneFftProcessorConfig (
   cfg_out->set_out_stride(1);
   cfg_out->set_window    (fft_window);
 
+  // Using FFTW_ESTIMATE since we're only invoking FFTW on a single large
+  // input data buffer (the raw audio samples); on my own personal laptop,
+  // at least, calculating wisdom requires significantly more overhead time
+  // than is saved later during FFT execution.
+  // http://www.fftw.org/fftw3_doc/Planner-Flags.html
+  cfg_out->set_fftw_planner_flags(FFTW_ESTIMATE);
+
   // The output of a r2c transform is symmetric, and FFTW omits the mirror
   // image:  http://www.fftw.org/fftw3_doc/Real_002ddata-DFT-Array-Format.html
   cfg_out->set_out_dist(level_1_fft_len/2+1);
@@ -257,10 +264,15 @@ void MakeLevelTwoFftProcessorConfig (
   cfg_out->set_out_stride(1);
   cfg_out->set_window    (fft_window);
 
+  // Using FFTW_ESTIMATE since we're only invoking FFTW on a single large
+  // input data buffer (the raw audio samples); on my own personal laptop,
+  // at least, calculating wisdom requires significantly more overhead time
+  // than is saved later during FFT execution.
   // Important to ensure that FFTW doesn't wreck the input level-1 spectrum
   // power data while calculating the level-2 output data, as we'll need the
-  // level-1 powers again later when estimating the first-beat time offset
-  cfg_out->set_fftw_planner_flags(FFTW_PRESERVE_INPUT);
+  // level-1 powers again later when estimating the first-beat time offset.
+  // http://www.fftw.org/fftw3_doc/Planner-Flags.html
+  cfg_out->set_fftw_planner_flags(FFTW_ESTIMATE | FFTW_PRESERVE_INPUT);
 
   // The output of a r2c transform is symmetric, and FFTW omits the mirror
   // image:  http://www.fftw.org/fftw3_doc/Real_002ddata-DFT-Array-Format.html
@@ -304,14 +316,14 @@ int main (int argc, char** argv)
 
   string result;
 
-  cout << "Processing \"" << in_file_path << "\" ...\n";
-
   unique_ptr<PcmMonoAudioData> in_audio (new PcmMonoAudioData(in_file_path));
   if (!in_audio->init_error().empty()) {
     cerr << "PCM audio file error for '" << in_file_path << "': "
          << in_audio->init_error() << "\n";
     return EXIT_FAILURE;
   }
+
+  cout << "Processing \"" << in_file_path << "\" ...\n";
 
   const int n_samples_per_sec = in_audio->header().n_samples_per_sec;
 

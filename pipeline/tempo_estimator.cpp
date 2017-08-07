@@ -203,7 +203,7 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
 
   vector<double> popularity_vec (level_2_fft_cfg_.out_len_per_fft() + 1, 0);
   const int popularity_vec_min_bin =
-      std::max(10, (int)(0.003 * popularity_vec.size()));
+      std::max(6, (int)(0.002 * popularity_vec.size()));
   const int popularity_vec_max_bin =
       (int)(0.997 * popularity_vec.size());
   for (const pair<double, double>& weighted_peak : level_2_weighted_fft_peaks)
