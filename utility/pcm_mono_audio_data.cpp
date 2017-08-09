@@ -18,8 +18,8 @@ const uint8_t PackedPcmAudioHeader::kData4cc [4] = { 'd', 'a', 't', 'a' };
 
 bool PackedPcmAudioHeader :: HasOptionalList () const
 {
-  return ( 0 == memcmp(
-      this->optional_special_chunk_position, PackedPcmAudioHeader::kList4cc, 4) );
+  return ( 0 == memcmp( this->optional_special_chunk.list_chunk_cap.chunk_id,
+                        PackedPcmAudioHeader::kList4cc, 4) );
 }
 
 string PackedPcmAudioHeader :: Validate () const
@@ -113,7 +113,7 @@ PcmMonoAudioData :: PcmMonoAudioData (const string& wav_file_path)
   {
     // Read LIST chunk, ignore remaining standard header fields
     const uint32_t list_size =
-        *(uint32_t*)(packed_header_.optional_special_chunk_position + 4);
+        packed_header_.optional_special_chunk.list_chunk_cap.chunk_size;
 
     // Calculate how much more of the audio file must be read to reach the
     // end of the LIST chunk
@@ -128,11 +128,11 @@ PcmMonoAudioData :: PcmMonoAudioData (const string& wav_file_path)
     }
   }
 
-  if (0 == memcmp(packed_header_.optional_special_chunk_position,
+  if (0 == memcmp(packed_header_.optional_special_chunk.data_chunk_cap.chunk_id,
                   PackedPcmAudioHeader::kData4cc, 4))
   {
     memcpy( &packed_data_chunk_cap_,
-            packed_header_.optional_special_chunk_position,
+            &packed_header_.optional_special_chunk.data_chunk_cap,
             sizeof(packed_data_chunk_cap_) );
   }
   else
@@ -276,7 +276,7 @@ string PcmMonoAudioData :: WriteToFile (const string& wav_file_path)
   out_header.n_block_align /= packed_header_.n_channels;
 
   const size_t initial_header_write_size =
-      packed_header_.optional_special_chunk_position
+      packed_header_.optional_special_chunk.bytes
       - reinterpret_cast<uint8_t*>(&packed_header_);
 
   file.write(reinterpret_cast<const char*>(&out_header),
@@ -285,17 +285,19 @@ string PcmMonoAudioData :: WriteToFile (const string& wav_file_path)
   if (packed_header_.HasOptionalList())
   {
     file.write(
-        reinterpret_cast<char*>(out_header.optional_special_chunk_position), 8);
+        reinterpret_cast<char*>(out_header.optional_special_chunk.bytes),
+                                sizeof(out_header.optional_special_chunk.bytes) );
     file.write(ext_header_.data(), ext_header_.size());
   }
-  else if (0 != memcmp(out_header.optional_special_chunk_position,
+  else if (0 != memcmp(out_header.optional_special_chunk.data_chunk_cap.chunk_id,
                        PackedPcmAudioHeader::kData4cc, 4))
   {
-    out_header.channel_mask = 1;
-    out_header.n_valid_bits_per_sample =
-        packed_header_.n_valid_bits_per_sample / packed_header_.n_channels;
+    out_header.optional_special_chunk.std_data.channel_mask = 1;
+    out_header.optional_special_chunk.std_data.n_valid_bits_per_sample =
+        packed_header_.optional_special_chunk.std_data.n_valid_bits_per_sample
+        / packed_header_.n_channels;
     file.write(
-        reinterpret_cast<char*>(out_header.optional_special_chunk_position),
+        reinterpret_cast<char*>(out_header.optional_special_chunk.bytes),
         sizeof(packed_header_) - initial_header_write_size );
   }
 

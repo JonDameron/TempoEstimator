@@ -247,9 +247,7 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
           return v1.first < v2.first;
         } );
 
-  // Avoid corner cases in which there's a handful of bogus hits close
-  // to the true cluster of tempo bins
-  const double popularity_sum_start_index = 0.5 + popularity_start_bin_index;
+  const double popularity_sum_start_index = popularity_start_bin_index;
 
   auto peak_start_iter = std::find_if(
       sorted_peaks.begin(), sorted_peaks.end(),
@@ -382,7 +380,8 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
     // these -- especially DC -- can be extremely large and have bin indices
     // too small to contribute to tempo detection.
     auto max_pwr_iter = std::max_element(
-        dc_pwr_bin_iter + 2, dc_pwr_bin_iter + level_2_out_n_bins - 1);
+        dc_pwr_bin_iter + (int)(level_2_out_n_bins * 0.05),
+        dc_pwr_bin_iter + (int)(level_2_out_n_bins * 0.95) );
     level_2_fft_peaks.at(f).first  = max_pwr_iter - dc_pwr_bin_iter;
     level_2_fft_peaks.at(f).second = *max_pwr_iter;
   }
