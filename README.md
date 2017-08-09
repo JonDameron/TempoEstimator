@@ -31,7 +31,7 @@ The Audio File Tempo Estimator reads music data in the form of a .wav file (unco
 
 The utility usually produces reasonably accurate output for music files that have a rigid tempo with only small fluctuations; if the song was originally recorded with a metronome for reference, this condition is probably met. Tracking of significant tempo fluctuations over the course of a song is not currently supported.
 
-The output file name will match that of the input, with extension ".TEMPO.wav" instead of ".wav".
+The output file name will match that of the input, but with prefix "TEMPO_OUTPUT_" and written to the current directory.
 
 Sample audio input files are available in the "sample_input" directory. All provided songs are in the US public domain. See included text file in "sample_input".
 
