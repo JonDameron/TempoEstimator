@@ -82,7 +82,7 @@ double TempoEstimator :: EstimateTempoOffsetNSamples (
   // attempting to work out the optimal alignment of the beat pulse train later,
   // but making it too short can increase the risk of total detection failure,
   // as the amount of averaging is reduced.
-  const int beat_pulse_len = std::max(1, (int)(level_1_n_ffts_per_beat / 8));
+  const int beat_pulse_len = std::max(1, (int)(level_1_n_ffts_per_beat * 0.3)); // * 0.125));
 
   const int n_pulses = (int)(beat_pulse_train_len / level_1_n_ffts_per_beat) - 2;
 
@@ -143,7 +143,7 @@ double TempoEstimator :: EstimateTempoOffsetNSamples (
   // is somewhere within the pulse duration -- probably within the first half
   // of the pulse, as many instruments that would contribute to this detection
   // method have a relatively short 'attack' time and longer 'decay' time.
-  const double beat_pulse_alignment_fac = 0.5;
+  const double beat_pulse_alignment_fac = 0.1; //0.25; //0.5;
   const double offset_n_samples =
       (corr_peak_index + beat_pulse_len * beat_pulse_alignment_fac)
       * level_1_fft_len;
@@ -208,7 +208,7 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
       (int)(0.997 * popularity_vec.size());
   for (const pair<double, double>& weighted_peak : level_2_weighted_fft_peaks)
   {
-    const int peak_bin_index = (int) floor(0.5 + weighted_peak.first);
+    const int peak_bin_index = (int)(0.5 + weighted_peak.first);
     if (peak_bin_index >= popularity_vec_min_bin
           && peak_bin_index <= popularity_vec_max_bin) {
       ++ popularity_vec.at(peak_bin_index);
@@ -224,7 +224,7 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
   const int corr_in_2_step = 1;
   const int corr_in_2_len  = boxcar.size();
 
-  vector<double> corr_out (popularity_vec.size() - boxcar.size() + 1);
+  vector<double> corr_out (corr_in_1_len - corr_in_2_len + 1);
 
   res = Correlate( corr_in_1,
                    corr_in_1_step,
@@ -237,9 +237,9 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
   // If Correlate() returned an error, then there's a software bug
   assert(res.empty());
 
-  auto popularity_start_iter =
+  auto popularity_begin_iter =
       std::max_element(corr_out.begin(), corr_out.end());
-  const int popularity_start_bin_index = popularity_start_iter - corr_out.begin();
+  const int popularity_begin_bin_index = popularity_begin_iter - corr_out.begin();
 
   vector<pair<double, double>> sorted_peaks = level_2_weighted_fft_peaks;
   std::sort( sorted_peaks.begin(), sorted_peaks.end(),
@@ -247,55 +247,186 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
           return v1.first < v2.first;
         } );
 
-  const double popularity_sum_start_index = popularity_start_bin_index;
+  const double popularity_sum_begin_index = popularity_begin_bin_index;
 
-  auto peak_start_iter = std::find_if(
+  auto peak_begin_iter = std::find_if(
       sorted_peaks.begin(), sorted_peaks.end(),
-      [popularity_sum_start_index](const pair<double, double>& val)->bool {
-          return (int)(0.5 + val.first) >= popularity_sum_start_index;
+      [popularity_sum_begin_index](const pair<double, double>& val)->bool {
+          return (int)(0.5 + val.first) >= popularity_sum_begin_index;
         } );
 
   // Move backward until the step distance exceeds a threshold (i.e., until
   // we seem to have exited the cluster of interest)
 
-  const double cluster_contiguity_threshold = 0.5;
+  // FIXME: This was originally 0.5 but has to be 1 until I generalize the
+  // correlation input vector to have a granularity matching this value;
+  // see the granularity parameter for the 'narrow-cluster' calculations below.
+  // For now 1 should be fine since the narrow-cluster processing that follows
+  // will isolate densely packed peak groups and focus exclusively on them.
+  const double cluster_contiguity_threshold = 1.0;
 
   // Condition "> begin()" which skips the first element is intentional
-  auto cluster_start_iter = peak_start_iter;
-  for (; cluster_start_iter > sorted_peaks.begin(); --cluster_start_iter)
+  auto wide_cluster_begin_iter = peak_begin_iter;
+  for (; wide_cluster_begin_iter > sorted_peaks.begin(); --wide_cluster_begin_iter)
   {
-    if (cluster_start_iter->first - (cluster_start_iter-1)->first
+    if (wide_cluster_begin_iter->first - (wide_cluster_begin_iter-1)->first
             > cluster_contiguity_threshold) {
       break;
     }
   }
 
+  auto wide_cluster_end_iter = sorted_peaks.end();
+  // Sanity check -- this condition would break the following loop, and should
+  // never happen
+  assert(wide_cluster_begin_iter != sorted_peaks.end());
+  for (auto iter = wide_cluster_begin_iter; true; ++iter)
+  {
+    // Putting the loop break condition in the body just because otherwise the
+    // code is really ugly
+    if (iter == sorted_peaks.end()-1
+          || (iter+1)->first - iter->first > cluster_contiguity_threshold) {
+      wide_cluster_end_iter = iter+1;
+      break;
+    }
+  }
+
+  const int wide_cluster_len = wide_cluster_end_iter - wide_cluster_begin_iter;
+  const double wide_cluster_peak_range =
+      (wide_cluster_end_iter-1)->first - wide_cluster_begin_iter->first;
+
+  // TODO: Really need to organize and document this code. This function has
+  // grown out of control; originally it was much shorter.
+
+  // Narrow our peak bin range selection even further by performing another
+  // even shorter boxcar correlation on our initial, wide range of bins
+
+  // Make a copy of the 'wide' cluster scaled up by a relatively large factor;
+  // the goal is to perform a correlation on a 'zoomed-in' version of our wide
+  // cluster, to identify the most dense sub-cluster therein
+
+  const double cluster_zoom_granularity = 1e4;
+
+  // We don't need to include the peak weight in cluster_zoom_vec, just the
+  // peak index
+  vector<double> cluster_zoom_vec (wide_cluster_len, 0);
+  std::transform(
+      wide_cluster_begin_iter,
+      wide_cluster_end_iter,
+      cluster_zoom_vec.begin(),
+      [cluster_zoom_granularity](const pair<double, double>& val) {
+            return val.first * cluster_zoom_granularity;
+          }
+      );
+
+  // Adding +1 to account for rounding that could possibly make the size of this
+  // vector one value too short
+  const int cluster_zoom_pop_vec_len =
+      (int)(0.5 + wide_cluster_peak_range * cluster_zoom_granularity) + 1;
+  vector<double> cluster_zoom_popularity_vec (cluster_zoom_pop_vec_len, 0);
+
+  for (double cluster_zoom_val : cluster_zoom_vec)
+  {
+    // Remember that cluster_zoom_vec is sorted since its source vector,
+    // sorted_peaks, is sorted
+    const int wide_pop_vec_index =
+        (int)(0.5 + cluster_zoom_val - cluster_zoom_vec.front());
+    ++ cluster_zoom_popularity_vec.at(wide_pop_vec_index);
+  }
+
+  const int cluster_zoom_boxcar_len =
+      std::min( cluster_zoom_pop_vec_len,
+                std::max(2, (int)(0.1 * cluster_zoom_pop_vec_len)) );
+
+  vector<double> cluster_zoom_boxcar (cluster_zoom_boxcar_len, 1);
+
+  const double* cluster_zoom_corr_in_1  = cluster_zoom_popularity_vec.data();
+  const int cluster_zoom_corr_in_1_step = 1;
+  const int cluster_zoom_corr_in_1_len  = cluster_zoom_popularity_vec.size();
+  const double* cluster_zoom_corr_in_2  = cluster_zoom_boxcar.data();
+  const int cluster_zoom_corr_in_2_step = 1;
+  const int cluster_zoom_corr_in_2_len  = cluster_zoom_boxcar.size();
+
+  vector<double> cluster_zoom_corr_out (
+      cluster_zoom_corr_in_1_len - cluster_zoom_corr_in_2_len + 1 );
+
+  res = Correlate( cluster_zoom_corr_in_1,
+                   cluster_zoom_corr_in_1_step,
+                   cluster_zoom_corr_in_1_len,
+                   cluster_zoom_corr_in_2,
+                   cluster_zoom_corr_in_2_step,
+                   cluster_zoom_corr_in_2_len,
+                   cluster_zoom_corr_out.data(),
+                   cluster_zoom_corr_out.size() );
+  // If Correlate() returned an error, then there's a software bug
+  assert(res.empty());
+
+  auto cluster_zoom_corr_peak_begin_iter =
+      std::max_element(cluster_zoom_corr_out.begin(), cluster_zoom_corr_out.end());
+
+  const int cluster_zoom_corr_peak_begin_index =
+      cluster_zoom_corr_peak_begin_iter - cluster_zoom_corr_out.begin();
+
+  const int cluster_zoom_corr_peak_len = *cluster_zoom_corr_peak_begin_iter;
+
+  const int min_acceptable_cluster_zoom_len = 3;
+
+  vector<pair<double, double>>::iterator weighted_sum_input_begin_iter;
+  vector<pair<double, double>>::iterator weighted_sum_input_end_iter;
+
+  if (cluster_zoom_corr_peak_len >= min_acceptable_cluster_zoom_len)
+  {
+    const double cluster_zoom_popularity_sum_begin_index =
+        wide_cluster_begin_iter->first
+        + cluster_zoom_corr_peak_begin_index / cluster_zoom_granularity;
+
+    auto narrow_cluster_begin_iter = std::find_if(
+        wide_cluster_begin_iter, wide_cluster_end_iter,
+        [cluster_zoom_popularity_sum_begin_index](const pair<double, double>& val)->bool {
+            return val.first >= cluster_zoom_popularity_sum_begin_index;
+          } );
+
+    assert(narrow_cluster_begin_iter != wide_cluster_end_iter);
+
+    const int wide_cluster_begin_index_zoomed_offset =
+        (cluster_zoom_corr_peak_begin_iter - cluster_zoom_corr_out.begin())
+        + cluster_zoom_boxcar.size();
+
+    const double cluster_zoom_popularity_sum_end_index =
+        wide_cluster_begin_iter->first
+        + wide_cluster_begin_index_zoomed_offset / cluster_zoom_granularity;
+
+    auto narrow_cluster_end_iter = std::find_if(
+        narrow_cluster_begin_iter, wide_cluster_end_iter,
+        [cluster_zoom_popularity_sum_end_index](const pair<double, double>& val)->bool {
+            return val.first > cluster_zoom_popularity_sum_end_index;
+          } );
+
+    assert(narrow_cluster_end_iter > narrow_cluster_begin_iter);
+
+    weighted_sum_input_begin_iter = narrow_cluster_begin_iter;
+    weighted_sum_input_end_iter   = narrow_cluster_end_iter;
+  }
+  else
+  {
+    weighted_sum_input_begin_iter = wide_cluster_begin_iter;
+    weighted_sum_input_end_iter   = wide_cluster_end_iter;
+  }
+
   // Perform weighted sum (iter->first is the peak bin index, second is
   // the weight)
   double weighted_sum = 0;
-  auto cluster_end_iter = sorted_peaks.end();
-  // Sanity check -- this condition would break the following loop, and should
-  // never happen
-  assert(cluster_start_iter != sorted_peaks.end());
-  for (auto iter = cluster_start_iter; true; ++iter)
+  double sum_of_weights = 0;
+  for (auto iter = weighted_sum_input_begin_iter;
+       iter < weighted_sum_input_end_iter; ++iter)
   {
     // To save time, overwrite weights of our (function-local) vector with their
     // fourth roots (see explanation at the top of this function)
     iter->second = pow(iter->second, 0.25);
     weighted_sum += iter->first * iter->second;
-    if (iter == sorted_peaks.end()-1
-          || (iter+1)->first - iter->first > cluster_contiguity_threshold) {
-      cluster_end_iter = iter+1;
-      break;
-    }
-  }
-
-  // Calculate average by dividing by the sum of the weights
-  double sum_of_weights = 0;
-  for (auto iter = cluster_start_iter; iter < cluster_end_iter; ++iter) {
     sum_of_weights += iter->second;
   }
 
+  // Calculate average by dividing by the sum of the weights
   const double tempo_bin_relative_to_level_2_fft = weighted_sum / sum_of_weights;
 
   return tempo_bin_relative_to_level_2_fft;
@@ -379,9 +510,11 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
     // including the first (DC) bin, as candidates for max element, as
     // these -- especially DC -- can be extremely large and have bin indices
     // too small to contribute to tempo detection.
+    // TODO: Provide formal documentation for the final values of the many
+    //       constants once I'm done experimenting
     auto max_pwr_iter = std::max_element(
         dc_pwr_bin_iter + (int)(level_2_out_n_bins * 0.05),
-        dc_pwr_bin_iter + (int)(level_2_out_n_bins * 0.95) );
+        dc_pwr_bin_iter + (int)(level_2_out_n_bins * 0.40) ); //0.95) );
     level_2_fft_peaks.at(f).first  = max_pwr_iter - dc_pwr_bin_iter;
     level_2_fft_peaks.at(f).second = *max_pwr_iter;
   }
@@ -548,6 +681,7 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
       level_2_fft_cfg_.fft_len() / (double)max_beat_rate_bin_index
       * n_time_samples_per_level_1_fft;
 
+  // TODO: Finalize this when I'm done experimenting
   //const double level_2_bin_index_for_tempo_estimate = max_group_peak_bin_index;
   const double level_2_bin_index_for_tempo_estimate =
       CalcLevelTwoTempoBinUsingPopularityMethod(level_2_weighted_fft_peaks);
@@ -579,21 +713,23 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
     tempo_estimate_samples_per_beat /= exp_scale;
   }
 
-  const int group_start_bin_for_tempo_offset_ref = 0; // Use first group
+  // Use second group if it exists
+  const int group_begin_bin_for_tempo_offset_ref =
+      std::min(1, n_groups-1) * n_level_2_ffts_per_group * level_2_out_n_bins;
 
   const int level_2_check_bin_for_tempo_offset_ref =
       (int)(0.5 + max_group_peak_bin_index);
 
-  const int level_2_fft_start_index_for_tempo_offet_ref = 0;
+  const int level_2_fft_begin_index_for_tempo_offet_ref = 0;
 
   double level_2_max_pwr_for_tempo_offset_ref = -1;
   int level_2_max_pwr_fft_index_for_tempo_offset_ref = -1;
   // f: level-2 FFT index
-  for (int f = level_2_fft_start_index_for_tempo_offet_ref;
+  for (int f = level_2_fft_begin_index_for_tempo_offet_ref;
        f < n_level_2_ffts_per_group; ++f)
   {
     const int check_bin =
-        group_start_bin_for_tempo_offset_ref
+        group_begin_bin_for_tempo_offset_ref
         + f * level_2_out_n_bins
         + level_2_check_bin_for_tempo_offset_ref;
 
@@ -608,8 +744,8 @@ string TempoEstimator :: Process (shared_ptr<const ProcData> input,
   // the best choice when correlating the level-1 output powers with a beat
   // pulse train of pulse frequency matching our estimated tempo
   const int level_1_reference_bin_index_for_tempo_offset_estimation =
-        level_2_max_pwr_fft_index_for_tempo_offset_ref
-        * level_2_fft_cfg_.in_dist();
+      level_2_max_pwr_fft_index_for_tempo_offset_ref
+      * level_2_fft_cfg_.in_dist();
 
   tempo_offset_samples_ = EstimateTempoOffsetNSamples(
       tempo_estimate_samples_per_beat,
