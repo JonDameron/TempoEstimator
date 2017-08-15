@@ -424,7 +424,7 @@ int main (int argc, char** argv)
 
   cout << "Tempo estimate (beats per minute): "
        << average_tempo_bpm
-       << ", offset = " << tempo_offset_seconds << " sec"
+       << ", offset: " << tempo_offset_seconds << " sec"
        << "\n";
 
   // Now write a new PCM audio file with a metronome sound overdubbed per the

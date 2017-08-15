@@ -337,6 +337,21 @@ double TempoEstimator :: CalcLevelTwoTempoBinUsingPopularityMethod (
       std::min( cluster_zoom_pop_vec_len,
                 std::max(2, (int)(0.1 * cluster_zoom_pop_vec_len)) );
 
+  // Note that the sum of the weights of our correlation vector *must* equal the
+  // length of the vector (non-normalized) since downstream code assumes that
+  // the correlation output is an unaveraged sum.
+  // TODO: Try using a triangular shape + pedestal instead of a boxcar so that
+  //       outliers from the narrow cluster will have less influence, and the
+  //       correlation peak will tend more toward the center of the max overlap.
+  //       When using the triangular vector, a special variant of the standard
+  //       discrete correlation should be employed that initially positions the
+  //       second vector (our triangle) at index -secondVecLen/2 and ends the
+  //       correlation at index firstVecLen, of course only performing
+  //       multiplications from valid indices 0 -> firstVecLen-1, and
+  //       compensating for the secondVec positions at which the vectors are
+  //       only partially overlapped by scaling up the result by a factor of
+  //       sum(secondVec) / sum(overlappingSecondVec).
+
   vector<double> cluster_zoom_boxcar (cluster_zoom_boxcar_len, 1);
 
   const double* cluster_zoom_corr_in_1  = cluster_zoom_popularity_vec.data();

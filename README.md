@@ -1,7 +1,7 @@
 Musical Tempo Estimation Utility and Associated Digital Signal Processing Libraries  
 (c) 2017 Jonathan G. Dameron | jon.g.dameron@gmail.com
 
-C++11 utility that performs multi-threaded digital signal processing of raw audio data to estimate the musical tempo.
+C++11 utility that performs multi-threaded, pipeline-based digital signal processing of raw audio data to estimate the musical tempo.
 
 Build Instructions
 ------------------
