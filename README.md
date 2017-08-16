@@ -29,7 +29,7 @@ Run with -h to see the full usage message with a list of all options.
 
 The Audio File Tempo Estimator reads music data in the form of a .wav file (uncompressed PCM), attempts to estimate the tempo of the music, and outputs a new .wav file with two alternating metronome click sounds. One marks the beats, the other (quieter) marks the offbeats.
 
-The utility usually produces reasonably accurate output for music files that have a rigid tempo with only small fluctuations; if the song was originally recorded with a metronome for reference, this condition is probably met. Tracking of significant tempo fluctuations over the course of a song is not currently supported.
+The algorithms used to determine tempo beat rate and time offset are still being improved, but the current versions usually produce reasonably accurate output for music files that have a rigid tempo with only small fluctuations; if the song was originally recorded with a metronome for reference, this condition is probably met. Tracking of significant tempo fluctuations over the course of a song is not currently supported.
 
 The output file name will match that of the input, but with prefix "TEMPO_OUTPUT_" and written to the current directory.
 
